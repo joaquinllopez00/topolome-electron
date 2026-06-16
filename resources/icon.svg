@@ -1,7 +1,38 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <rect width="512" height="512" fill="#0a0a0a" />
-  <g transform="translate(128 128) scale(16)">
-    <rect x="0.5" y="0.5" width="15" height="15" stroke="#e5e5e5" stroke-opacity="0.35" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <!-- Transparent canvas with macOS "safe area" margin: the icon body fills
+       ~80% of the square, leaving room the dock expects around the squircle. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c1c1c" />
+      <stop offset="1" stop-color="#080808" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded-rect (squircle-approximating) body. -->
+  <rect x="100" y="100" width="824" height="824" rx="184" fill="url(#bg)" />
+  <rect
+    x="100.5"
+    y="100.5"
+    width="823"
+    height="823"
+    rx="183.5"
+    fill="none"
+    stroke="#ffffff"
+    stroke-opacity="0.08"
+  />
+
+  <!-- Geometric mark, centered in the body. -->
+  <g transform="translate(292 292) scale(27.5)">
+    <rect
+      x="0.5"
+      y="0.5"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="#e5e5e5"
+      stroke-opacity="0.45"
+      stroke-width="0.36"
+    />
     <rect x="8" y="0" width="8" height="8" fill="#e5e5e5" />
   </g>
 </svg>
