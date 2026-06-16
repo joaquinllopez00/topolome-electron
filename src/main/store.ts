@@ -17,11 +17,27 @@ export const DATA_ROOT = join(app.getPath('home'), '.topolome')
 const CATEGORIES_DIR = join(DATA_ROOT, 'categories')
 const CONFIG_PATH = join(DATA_ROOT, 'config.json')
 
+/** Permission posture for the headless agent passes the loop spawns. */
+export type LoopPermissionMode = 'acceptEdits' | 'bypassPermissions'
+
+export type Theme = 'light' | 'dark'
+
 export interface Config {
   sources: string[]
   tags: string[]
   system_prompt: string
   item_delimiter: string
+  /** UI color theme. */
+  theme: Theme
+  /** Minutes between agent passes when the loop is running. */
+  loop_interval_minutes: number
+  /**
+   * How much the spawned agent may do without an approval prompt (which it
+   * can't answer headlessly). `acceptEdits` = file edits only (MCP/Bash get
+   * denied); `bypassPermissions` = full tool access, needed for arbitrary
+   * sources like Slack MCP.
+   */
+  loop_permission_mode: LoopPermissionMode
 }
 
 export interface Item {
@@ -40,7 +56,10 @@ const DEFAULT_CONFIG: Config = {
   tags: [],
   system_prompt:
     'You categorize incoming items. Read the configured sources, then write each item as a JSON file into the most appropriate category directory.',
-  item_delimiter: '\n---\n'
+  item_delimiter: '\n---\n',
+  loop_interval_minutes: 10,
+  loop_permission_mode: 'bypassPermissions',
+  theme: 'dark'
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -94,7 +113,12 @@ export async function saveConfig(patch: Partial<Config>): Promise<Config> {
     sources: patch.sources ?? current.sources,
     tags: patch.tags ?? current.tags,
     system_prompt: patch.system_prompt ?? current.system_prompt,
-    item_delimiter: patch.item_delimiter ?? current.item_delimiter
+    item_delimiter: patch.item_delimiter ?? current.item_delimiter,
+    loop_interval_minutes:
+      patch.loop_interval_minutes ?? current.loop_interval_minutes,
+    loop_permission_mode:
+      patch.loop_permission_mode ?? current.loop_permission_mode,
+    theme: patch.theme ?? current.theme
   }
   await fs.mkdir(DATA_ROOT, { recursive: true })
   await fs.writeFile(CONFIG_PATH, JSON.stringify(next, null, 2), 'utf-8')

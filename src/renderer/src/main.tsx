@@ -4,7 +4,12 @@ import { createHashRouter, RouterProvider } from 'react-router-dom'
 import App from './App'
 import HomeRoute from './routes/Home'
 import CategoryRoute from './routes/CategoryRoute'
+import { applyTheme, storedTheme } from './lib/theme'
 import './index.css'
+
+// Apply the remembered theme before first paint to avoid a flash; App then
+// reconciles it against the canonical value in config.json.
+applyTheme(storedTheme())
 
 const router = createHashRouter([
   {

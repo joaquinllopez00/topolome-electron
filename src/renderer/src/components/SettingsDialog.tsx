@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
-import type { Config } from '@/types'
+import type { Config, LoopPermissionMode, Theme } from '@/types'
+import { applyTheme } from '../lib/theme'
 import { Button } from './ui/button'
+import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
 import {
   Dialog,
@@ -39,6 +41,10 @@ export function SettingsDialog({
   const [tags, setTags] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [itemDelimiter, setItemDelimiter] = useState('')
+  const [intervalMinutes, setIntervalMinutes] = useState('10')
+  const [permissionMode, setPermissionMode] =
+    useState<LoopPermissionMode>('bypassPermissions')
+  const [theme, setTheme] = useState<Theme>('dark')
   const [saving, setSaving] = useState(false)
 
   // Load the live config each time the dialog opens so values stay current.
@@ -49,18 +55,26 @@ export function SettingsDialog({
       setTags(toLines(config.tags))
       setSystemPrompt(config.system_prompt)
       setItemDelimiter(config.item_delimiter)
+      setIntervalMinutes(String(config.loop_interval_minutes))
+      setPermissionMode(config.loop_permission_mode)
+      setTheme(config.theme)
     })
   }, [open])
 
   const save = async (): Promise<void> => {
     setSaving(true)
     try {
+      const parsedInterval = Math.max(1, Math.round(Number(intervalMinutes) || 0))
       const saved = await window.topolome.setConfig({
         sources: fromLines(sources),
         tags: fromLines(tags),
         system_prompt: systemPrompt.trim(),
-        item_delimiter: itemDelimiter
+        item_delimiter: itemDelimiter,
+        loop_interval_minutes: parsedInterval,
+        loop_permission_mode: permissionMode,
+        theme
       })
+      applyTheme(saved.theme)
       onSaved?.(saved)
       onOpenChange(false)
     } finally {
@@ -84,6 +98,17 @@ export function SettingsDialog({
         </DialogHeader>
 
         <div className="space-y-6 overflow-y-auto px-5 py-5">
+          <Field label="Theme" hint="Color theme for the app.">
+            <select
+              value={theme}
+              onChange={(e) => setTheme(e.target.value as Theme)}
+              className="h-10 w-full border border-transparent border-b-input bg-transparent py-1 text-sm outline-none focus-visible:border-b-ring"
+            >
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </Field>
+
           <Field
             label="System prompt"
             hint="What the loop should collect and how to judge it."
@@ -115,6 +140,37 @@ export function SettingsDialog({
               className="min-h-20 font-mono text-[13px]"
               placeholder={'urgent\nread-later'}
             />
+          </Field>
+
+          <Field
+            label="Loop interval (minutes)"
+            hint="How often the app runs an agent pass while the loop is active."
+          >
+            <Input
+              type="number"
+              min={1}
+              value={intervalMinutes}
+              onChange={(e) => setIntervalMinutes(e.target.value)}
+              className="font-mono"
+            />
+          </Field>
+
+          <Field
+            label="Agent permissions"
+            hint="What each pass may do unattended. Bypass is required for MCP/Bash sources (e.g. Slack); accept-edits is safer but limits the agent to file edits only."
+          >
+            <select
+              value={permissionMode}
+              onChange={(e) =>
+                setPermissionMode(e.target.value as LoopPermissionMode)
+              }
+              className="h-10 w-full border border-transparent border-b-input bg-transparent py-1 text-sm outline-none focus-visible:border-b-ring"
+            >
+              <option value="bypassPermissions">
+                Full access (bypass permissions)
+              </option>
+              <option value="acceptEdits">File edits only (safer)</option>
+            </select>
           </Field>
 
           <Field

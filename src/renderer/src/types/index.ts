@@ -11,9 +11,25 @@ export interface StoredItem extends Item {
   id: string
 }
 
+export type LoopPermissionMode = 'acceptEdits' | 'bypassPermissions'
+
+export type Theme = 'light' | 'dark'
+
 export interface Config {
   sources: string[]
   tags: string[]
   system_prompt: string
   item_delimiter: string
+  loop_interval_minutes: number
+  loop_permission_mode: LoopPermissionMode
+  theme: Theme
+}
+
+export interface LoopStatus {
+  enabled: boolean
+  running: boolean
+  intervalMinutes: number
+  lastRunAt: number | null
+  lastExitCode: number | null
+  lastError: string | null
 }

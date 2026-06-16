@@ -6,13 +6,19 @@ import { AddCategoryButton } from './components/AddCategoryButton'
 import { LoopBanner } from './components/LoopBanner'
 import { SetupInstructions } from './components/SetupInstructions'
 import { SettingsDialog } from './components/SettingsDialog'
+import { LoopOutput } from './components/LoopOutput'
 import { Button } from './components/ui/button'
+import { AppLogo } from './components/AppLogo'
+import { applyTheme } from './lib/theme'
+import type { LoopStatus } from './types'
 
 export default function App(): React.JSX.Element {
   const [categories, setCategories] = useState<string[]>([])
   const [root, setRoot] = useState<string>('')
   const [setupOpen, setSetupOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [outputOpen, setOutputOpen] = useState(false)
+  const [loop, setLoop] = useState<LoopStatus | null>(null)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -23,7 +29,19 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     refresh()
     window.topolome.getStoreRoot().then(setRoot)
+    window.topolome.getLoopStatus().then(setLoop)
+    // Reconcile the instant-applied theme against the canonical config value.
+    window.topolome.getConfig().then((config) => applyTheme(config.theme))
+    return window.topolome.onLoopStatus(setLoop)
   }, [refresh])
+
+  const handleToggleLoop = useCallback(async () => {
+    if (loop?.enabled) {
+      setLoop(await window.topolome.stopLoop())
+    } else {
+      setLoop(await window.topolome.startLoop())
+    }
+  }, [loop?.enabled])
 
   const activePath = decodeURIComponent(location.pathname.replace(/^\//, ''))
 
@@ -61,7 +79,7 @@ export default function App(): React.JSX.Element {
         className="flex h-10 shrink-0 items-center border-b border-border bg-card pr-4 pl-20"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <span className="text-primary">▚</span>
+        <AppLogo />
         <span className="ml-2 text-xs font-semibold tracking-widest uppercase">
           topolome
         </span>
@@ -88,7 +106,12 @@ export default function App(): React.JSX.Element {
             />
           </div>
 
-          <LoopBanner onViewSetup={() => setSetupOpen(true)} />
+          <LoopBanner
+            status={loop}
+            onToggle={handleToggleLoop}
+            onViewOutput={() => setOutputOpen(true)}
+            onViewSetup={() => setSetupOpen(true)}
+          />
 
           <div className="border-t border-border p-3">
             <AddCategoryButton onCreate={handleCreate} />
@@ -112,6 +135,7 @@ export default function App(): React.JSX.Element {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
       />
+      <LoopOutput open={outputOpen} onOpenChange={setOutputOpen} />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import type { Config, Item, StoredItem } from '@/types'
+import type { Config, Item, StoredItem, LoopStatus } from '@/types'
 
 declare global {
   interface Window {
@@ -21,6 +21,12 @@ declare global {
         patch: Partial<Item>
       ) => Promise<StoredItem>
       deleteItem: (category: string, id: string) => Promise<void>
+      startLoop: () => Promise<LoopStatus>
+      stopLoop: () => Promise<LoopStatus>
+      getLoopStatus: () => Promise<LoopStatus>
+      onLoopStatus: (cb: (status: LoopStatus) => void) => () => void
+      getLoopLogs: () => Promise<string>
+      onLoopOutput: (cb: (chunk: string) => void) => () => void
     }
   }
 }

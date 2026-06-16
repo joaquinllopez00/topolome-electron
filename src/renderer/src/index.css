@@ -4,7 +4,7 @@
 @import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/geist";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 /*
  * topolome — mono, retro-esque dark terminal aesthetic.
@@ -109,22 +109,6 @@ body {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   letter-spacing: -0.01em;
-}
-
-/* faint retro scanline texture */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 50;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(255, 255, 255, 0.015) 0px,
-    rgba(255, 255, 255, 0.015) 1px,
-    transparent 1px,
-    transparent 3px
-  );
 }
 
 ::selection {

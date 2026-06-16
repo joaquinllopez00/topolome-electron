@@ -3,6 +3,8 @@ import { NavLink } from 'react-router-dom'
 import { Pencil, Trash2, Check, X } from 'lucide-react'
 import type { Category as CategoryType } from '@/types'
 import { cn } from '@/lib/utils'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
 
 interface CategoryProps {
   category: CategoryType
@@ -23,8 +25,8 @@ export function Category({ category, onRename, onDelete }: CategoryProps): React
 
   if (editing) {
     return (
-      <div className="flex items-center gap-1 px-4 py-1.5">
-        <input
+      <div className="relative px-4 py-1.5">
+        <Input
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -35,31 +37,49 @@ export function Category({ category, onRename, onDelete }: CategoryProps): React
               setEditing(false)
             }
           }}
-          className="h-6 w-full bg-background px-1 text-sm text-foreground outline-none"
+          className="h-6 pr-16 text-sm"
         />
-        <button onClick={commit} className="text-muted-foreground hover:text-primary">
-          <Check className="size-3.5" />
-        </button>
-        <button
-          onClick={() => {
-            setValue(category)
-            setEditing(false)
-          }}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <X className="size-3.5" />
-        </button>
+
+        <div className="absolute inset-y-0 right-2 flex items-center">
+          <div className="flex items-center border border-border bg-card shadow-sm">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Save"
+              className="rounded-none"
+              onClick={commit}
+            >
+              <Check />
+              <span className="sr-only">Save</span>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              title="Cancel"
+              className="rounded-none border-l border-border"
+              onClick={() => {
+                setValue(category)
+                setEditing(false)
+              }}
+            >
+              <X />
+              <span className="sr-only">Cancel</span>
+            </Button>
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="group flex items-center">
+    <div className="group relative">
       <NavLink
         to={`/${encodeURIComponent(category)}`}
         className={({ isActive }) =>
           cn(
-            'flex flex-1 items-center gap-2 px-4 py-1.5 text-sm transition-colors',
+            'flex w-full items-center gap-2 px-4 py-1.5 text-sm transition-colors',
             isActive
               ? 'bg-accent text-accent-foreground'
               : 'text-muted-foreground hover:text-foreground'
@@ -69,29 +89,40 @@ export function Category({ category, onRename, onDelete }: CategoryProps): React
         {({ isActive }) => (
           <>
             <span className="text-primary">{isActive ? '>' : '·'}</span>
-            <span className="truncate">{category}</span>
+            <span className="truncate pr-16">{category}</span>
           </>
         )}
       </NavLink>
-      <div className="flex shrink-0 items-center gap-1 pr-3 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          onClick={() => setEditing(true)}
-          title="Rename"
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <Pencil className="size-3.5" />
-        </button>
-        <button
-          onClick={() => {
-            if (confirm(`Delete category "${category}" and all its items?`)) {
-              onDelete(category)
-            }
-          }}
-          title="Delete"
-          className="text-muted-foreground hover:text-destructive"
-        >
-          <Trash2 className="size-3.5" />
-        </button>
+
+      <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+        <div className="flex items-center border border-border bg-card shadow-sm">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            title="Rename"
+            className="rounded-none"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil />
+            <span className="sr-only">Rename</span>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            title="Delete"
+            className="rounded-none border-l border-border hover:text-destructive"
+            onClick={() => {
+              if (confirm(`Delete category "${category}" and all its items?`)) {
+                onDelete(category)
+              }
+            }}
+          >
+            <Trash2 />
+            <span className="sr-only">Delete</span>
+          </Button>
+        </div>
       </div>
     </div>
   )
