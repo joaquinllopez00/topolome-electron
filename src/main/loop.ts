@@ -116,12 +116,13 @@ function itemShapeSpec(categoryPath: string): string {
        "title": string,
        "description": string,
        "archived": false,
-       "source": { "sourceFriendlyName": string, "linkToOpen"?: string },
+       "sources": [ { "sourceFriendlyName": string, "linkToOpen"?: string }, ... ],
        "suggestedAction"?: { "title": string, "sessionStartPrompt": string }
      }
-   "source" records where the item came from: "sourceFriendlyName" is a short human label
-   (e.g. "Slack #general"); "linkToOpen" is an optional URL or deep link that opens the
-   original (e.g. a message permalink) — include it whenever one is available.
+   "sources" is an array of where the item came from — include ONE ENTRY PER source/link
+   (e.g. a Slack message, a linked doc, a referenced PR). "sourceFriendlyName" is a short human
+   label (e.g. "Slack #general"); "linkToOpen" is an optional URL or deep link that opens that
+   source (e.g. a message permalink) — include it whenever one is available. Label each clearly.
    "suggestedAction" is OPTIONAL — include it ONLY if the item is actionable (a concrete next
    step someone could take). "title" is a short imperative label (e.g. "Have an agent investigate");
    "sessionStartPrompt" is a ready-to-run prompt that would carry out that action in a Claude

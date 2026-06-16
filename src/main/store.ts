@@ -87,14 +87,18 @@ export interface Item {
   title: string;
   description: string;
   archived: boolean;
-  source?: Source;
+  /** One or more labeled sources/links the item came from. */
+  sources?: Source[];
   suggestedAction?: SuggestedAction;
   updates?: ItemUpdate[];
 }
 
-/** An item as exposed to the renderer: file contents plus its filename stem. */
+/** An item as exposed to the renderer: file contents, id, and filesystem timestamps. */
 export interface StoredItem extends Item {
   id: string;
+  /** From file metadata (epoch ms). */
+  createdAt: number;
+  modifiedAt: number;
 }
 
 const DEFAULT_CONFIG: Config = {
@@ -234,7 +238,7 @@ export async function setCategoryMeta(category: string, meta: CategoryMeta): Pro
   return next;
 }
 
-/** Validate/normalize an item's `source` field read from disk. */
+/** Validate/normalize a single `source` object. */
 function parseSource(raw: unknown): Source | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const obj = raw as Record<string, unknown>;
@@ -245,6 +249,17 @@ function parseSource(raw: unknown): Source | undefined {
     sourceFriendlyName: name,
     ...(typeof link === "string" && link.trim() ? { linkToOpen: link } : {}),
   };
+}
+
+/** Read an item's sources, accepting the new `sources` array or a legacy single `source`. */
+function parseSources(parsed: Record<string, unknown>): Source[] | undefined {
+  const raw = Array.isArray(parsed.sources)
+    ? parsed.sources
+    : parsed.source
+      ? [parsed.source]
+      : [];
+  const list = raw.map(parseSource).filter((s): s is Source => !!s);
+  return list.length ? list : undefined;
 }
 
 function parseSuggestedAction(raw: unknown): SuggestedAction | undefined {
@@ -278,25 +293,27 @@ export async function listItems(category: string): Promise<StoredItem[]> {
   const items = await Promise.all(
     files.map(async (f) => {
       try {
-        const raw = await fs.readFile(join(dir, f), "utf-8");
+        const full = join(dir, f);
+        const [raw, stat] = await Promise.all([fs.readFile(full, "utf-8"), fs.stat(full)]);
         const parsed = JSON.parse(raw);
         return {
           id: f.replace(/\.json$/, ""),
           title: String(parsed.title ?? f.replace(/\.json$/, "")),
           description: String(parsed.description ?? ""),
           archived: Boolean(parsed.archived ?? false),
-          source: parseSource(parsed.source),
+          sources: parseSources(parsed),
           suggestedAction: parseSuggestedAction(parsed.suggestedAction),
           updates: parseUpdates(parsed.updates),
+          createdAt: stat.birthtimeMs || stat.mtimeMs,
+          modifiedAt: stat.mtimeMs,
         } as StoredItem;
       } catch {
         return null;
       }
     }),
   );
-  return items
-    .filter((i): i is StoredItem => i !== null)
-    .sort((a, b) => a.title.localeCompare(b.title));
+  // Most-recently-modified first by default; the UI can re-sort.
+  return items.filter((i): i is StoredItem => i !== null).sort((a, b) => b.modifiedAt - a.modifiedAt);
 }
 
 function slugify(value: string): string {
@@ -325,7 +342,7 @@ async function writeItem(dir: string, id: string, item: Item): Promise<void> {
     description: item.description,
     archived: item.archived,
     // Preserve agent-provided fields through edits/archives.
-    ...(item.source ? { source: item.source } : {}),
+    ...(item.sources?.length ? { sources: item.sources } : {}),
     ...(item.suggestedAction ? { suggestedAction: item.suggestedAction } : {}),
     ...(item.updates?.length ? { updates: item.updates } : {}),
   };
@@ -345,7 +362,8 @@ export async function createItem(
     archived: false,
   };
   await writeItem(dir, id, item);
-  return { id, ...item };
+  const stat = await fs.stat(join(dir, `${id}.json`));
+  return { id, ...item, createdAt: stat.birthtimeMs || stat.mtimeMs, modifiedAt: stat.mtimeMs };
 }
 
 export async function updateItem(
@@ -357,13 +375,15 @@ export async function updateItem(
   const path = join(dir, `${id}.json`);
   let current: Item = { title: id, description: "", archived: false };
   try {
-    current = { ...current, ...JSON.parse(await fs.readFile(path, "utf-8")) };
+    const parsed = JSON.parse(await fs.readFile(path, "utf-8"));
+    current = { ...current, ...parsed, sources: parseSources(parsed) };
   } catch {
     // fall back to defaults if the file is missing/corrupt
   }
   const next: Item = { ...current, ...patch };
   await writeItem(dir, id, next);
-  return { id, ...next };
+  const stat = await fs.stat(path);
+  return { id, ...next, createdAt: stat.birthtimeMs || stat.mtimeMs, modifiedAt: stat.mtimeMs };
 }
 
 export async function deleteItem(category: string, id: string): Promise<void> {

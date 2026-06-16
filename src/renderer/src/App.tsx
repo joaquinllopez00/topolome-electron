@@ -8,6 +8,7 @@ import { SetupInstructions } from "./components/SetupInstructions";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { LoopOutput } from "./components/LoopOutput";
 import { Button } from "./components/ui/button";
+import { TooltipProvider } from "./components/ui/tooltip";
 import { AppLogo } from "./components/AppLogo";
 import { applyTheme } from "./lib/theme";
 import type { LoopStatus } from "./types";
@@ -85,7 +86,8 @@ export default function App(): React.JSX.Element {
   );
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    <TooltipProvider>
+      <div className="flex h-screen flex-col overflow-hidden">
       {/* Full-width draggable title bar. pl-20 reserves room for the macOS
           traffic-light window controls so nothing renders underneath them. */}
       <header
@@ -137,5 +139,6 @@ export default function App(): React.JSX.Element {
       <SettingsDialog root={root} open={settingsOpen} onOpenChange={setSettingsOpen} />
       <LoopOutput open={outputOpen} onOpenChange={setOutputOpen} />
     </div>
+    </TooltipProvider>
   );
 }

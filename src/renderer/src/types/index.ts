@@ -32,14 +32,16 @@ export interface Item {
   title: string;
   description: string;
   archived: boolean;
-  source?: Source;
+  sources?: Source[];
   suggestedAction?: SuggestedAction;
   updates?: ItemUpdate[];
 }
 
-/** An item plus its filesystem id (filename stem), as returned by the store. */
+/** An item plus its filesystem id and timestamps, as returned by the store. */
 export interface StoredItem extends Item {
   id: string;
+  createdAt: number;
+  modifiedAt: number;
 }
 
 export type LoopPermissionMode = "acceptEdits" | "bypassPermissions";

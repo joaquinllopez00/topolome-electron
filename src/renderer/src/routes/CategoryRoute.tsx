@@ -20,6 +20,8 @@ export default function CategoryRoute(): React.JSX.Element {
   const [draftDescription, setDraftDescription] = useState("");
   const [view, setView] = useState<ItemView>("grid");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"modified" | "created" | "title">("modified");
 
   const refresh = useCallback(async () => {
     const result = await window.topolome.listItems(category);
@@ -85,9 +87,23 @@ export default function CategoryRoute(): React.JSX.Element {
     await refresh();
   }, [category, draftTitle, draftDescription, refresh]);
 
-  const visible = showArchived ? items : items.filter((i) => !i.archived);
   const archivedCount = items.filter((i) => i.archived).length;
   const activeCount = items.length - archivedCount;
+
+  const q = query.trim().toLowerCase();
+  const visible = items
+    .filter((i) => (showArchived ? true : !i.archived))
+    .filter(
+      (i) =>
+        !q ||
+        i.title.toLowerCase().includes(q) ||
+        i.description.toLowerCase().includes(q),
+    )
+    .sort((a, b) => {
+      if (sort === "title") return a.title.localeCompare(b.title);
+      if (sort === "created") return b.createdAt - a.createdAt;
+      return b.modifiedAt - a.modifiedAt;
+    });
 
   return (
     <div className="px-8 py-12">
@@ -143,6 +159,25 @@ export default function CategoryRoute(): React.JSX.Element {
             + item
           </Button>
         </div>
+      </div>
+
+      <div className="mb-6 flex items-center gap-2">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="search items…"
+          className="flex-1"
+        />
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as typeof sort)}
+          className="h-10 border border-transparent border-b-input bg-transparent px-2 py-1 text-sm outline-none focus-visible:border-b-ring"
+          title="Sort"
+        >
+          <option value="modified">Last modified</option>
+          <option value="created">Date created</option>
+          <option value="title">Title A–Z</option>
+        </select>
       </div>
 
       <CategorySettingsDialog

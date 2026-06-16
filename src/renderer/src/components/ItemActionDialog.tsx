@@ -3,6 +3,7 @@ import { Copy, Check, FolderOpen } from "lucide-react";
 import type { StoredItem } from "@/types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -45,6 +46,7 @@ export function ItemActionDialog({
 }: ItemActionDialogProps): React.JSX.Element {
   const action = item.suggestedAction;
   const [dir, setDir] = useState("");
+  const [prompt, setPrompt] = useState(action?.sessionStartPrompt ?? "");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +60,7 @@ export function ItemActionDialog({
         category,
         itemId: item.id,
         dir: dir.trim(),
-        prompt: action.sessionStartPrompt,
+        prompt: prompt.trim() || action.sessionStartPrompt,
       });
       setSessionId(sessionId);
     } catch (e) {
@@ -85,14 +87,19 @@ export function ItemActionDialog({
             <section className="space-y-3">
               <div>
                 <p className="mb-1 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
-                  Suggested prompt
+                  Suggested prompt (editable)
                 </p>
                 <div className="relative">
-                  <pre className="max-h-48 overflow-auto border border-border bg-muted px-3 py-2 pr-12 text-[12px] whitespace-pre-wrap text-foreground">
-                    {action.sessionStartPrompt}
-                  </pre>
-                  <CopyButton text={action.sessionStartPrompt} />
+                  <Textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    className="max-h-48 min-h-28 pr-12 font-mono text-[12px]"
+                  />
+                  <CopyButton text={prompt} />
                 </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  topolome appends instructions for writing progress back to this item on send.
+                </p>
               </div>
 
               <div>
