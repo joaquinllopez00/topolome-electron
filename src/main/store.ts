@@ -16,6 +16,8 @@ import { join } from "path";
 export const DATA_ROOT = join(app.getPath("home"), ".topolome");
 const CATEGORIES_DIR = join(DATA_ROOT, "categories");
 const CONFIG_PATH = join(DATA_ROOT, "config.json");
+/** Per-category sidecar manifest; reserved filename, never treated as an item. */
+const CATEGORY_META_FILE = "category.json";
 
 /** Permission posture for the headless agent passes the loop spawns. */
 export type LoopPermissionMode = "acceptEdits" | "bypassPermissions";
@@ -41,6 +43,16 @@ export interface Config {
    * sources like Slack MCP.
    */
   loop_permission_mode: LoopPermissionMode;
+}
+
+/**
+ * Per-category configuration, stored as `category.json` inside the category
+ * directory. `description` disambiguates what belongs here; `sources` scopes
+ * which inputs feed it (a subset of — and contributor to — the global catalog).
+ */
+export interface CategoryMeta {
+  description: string;
+  sources: string[];
 }
 
 /** Where an item came from. If a link is present the UI can open it. */
@@ -150,10 +162,49 @@ export async function listCategories(): Promise<string[]> {
     .sort();
 }
 
-export async function createCategory(name: string): Promise<void> {
+export async function createCategory(name: string): Promise<string> {
   const safe = name.trim().replace(/[/\\]/g, "-");
   if (!safe) throw new Error("Category name is empty");
   await fs.mkdir(join(CATEGORIES_DIR, safe), { recursive: true });
+  return safe;
+}
+
+/** Read a category's sidecar manifest, defaulting to empty when absent. */
+export async function getCategoryMeta(category: string): Promise<CategoryMeta> {
+  try {
+    const raw = await fs.readFile(join(CATEGORIES_DIR, category, CATEGORY_META_FILE), "utf-8");
+    const parsed = JSON.parse(raw);
+    return {
+      description: typeof parsed.description === "string" ? parsed.description : "",
+      sources: Array.isArray(parsed.sources)
+        ? parsed.sources.filter((s: unknown): s is string => typeof s === "string")
+        : [],
+    };
+  } catch {
+    return { description: "", sources: [] };
+  }
+}
+
+/**
+ * Write a category's sidecar manifest. Any source named here is also merged
+ * into the global catalog (config.sources) so free-text entries become
+ * selectable from every other category.
+ */
+export async function setCategoryMeta(category: string, meta: CategoryMeta): Promise<CategoryMeta> {
+  const dir = join(CATEGORIES_DIR, category);
+  await fs.mkdir(dir, { recursive: true });
+  const next: CategoryMeta = {
+    description: meta.description.trim(),
+    sources: Array.from(new Set(meta.sources.map((s) => s.trim()).filter(Boolean))),
+  };
+  await fs.writeFile(join(dir, CATEGORY_META_FILE), JSON.stringify(next, null, 2), "utf-8");
+
+  const config = await getConfig();
+  const merged = Array.from(new Set([...config.sources, ...next.sources]));
+  if (merged.length !== config.sources.length) {
+    await saveConfig({ sources: merged });
+  }
+  return next;
 }
 
 /** Validate/normalize an item's `source` field read from disk. */
@@ -172,7 +223,9 @@ function parseSource(raw: unknown): Source | undefined {
 export async function listItems(category: string): Promise<StoredItem[]> {
   const dir = join(CATEGORIES_DIR, category);
   if (!(await exists(dir))) return [];
-  const files = (await fs.readdir(dir)).filter((f) => f.endsWith(".json"));
+  const files = (await fs.readdir(dir)).filter(
+    (f) => f.endsWith(".json") && f !== CATEGORY_META_FILE,
+  );
   const items = await Promise.all(
     files.map(async (f) => {
       try {

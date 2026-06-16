@@ -31,6 +31,9 @@ const api = {
   createCategory: (name: string) => ipcRenderer.invoke("categories:create", name),
   renameCategory: (from: string, to: string) => ipcRenderer.invoke("categories:rename", from, to),
   deleteCategory: (name: string) => ipcRenderer.invoke("categories:delete", name),
+  getCategoryMeta: (category: string) => ipcRenderer.invoke("categories:getMeta", category),
+  setCategoryMeta: (category: string, meta: { description: string; sources: string[] }) =>
+    ipcRenderer.invoke("categories:setMeta", category, meta),
   listItems: (category: string) => ipcRenderer.invoke("items:list", category),
   createItem: (category: string, data: { title: string; description: string }) =>
     ipcRenderer.invoke("items:create", category, data),

@@ -9,6 +9,8 @@ import {
   createCategory,
   renameCategory,
   deleteCategory,
+  getCategoryMeta,
+  setCategoryMeta,
   listItems,
   createItem,
   updateItem,
@@ -17,6 +19,7 @@ import {
   DATA_ROOT,
   type Item,
   type Config,
+  type CategoryMeta,
 } from "./store";
 import { startLoop, stopLoop, getLoopStatus, getLoopLogs } from "./loop";
 
@@ -94,6 +97,10 @@ app.whenReady().then(async () => {
   ipcMain.handle("categories:create", (_e, name: string) => createCategory(name));
   ipcMain.handle("categories:rename", (_e, from: string, to: string) => renameCategory(from, to));
   ipcMain.handle("categories:delete", (_e, name: string) => deleteCategory(name));
+  ipcMain.handle("categories:getMeta", (_e, category: string) => getCategoryMeta(category));
+  ipcMain.handle("categories:setMeta", (_e, category: string, meta: CategoryMeta) =>
+    setCategoryMeta(category, meta),
+  );
 
   ipcMain.handle("items:list", (_e, category: string) => listItems(category));
   ipcMain.handle(

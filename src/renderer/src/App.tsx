@@ -52,8 +52,14 @@ export default function App(): React.JSX.Element {
   const activePath = decodeURIComponent(location.pathname.replace(/^\//, ""));
 
   const handleCreate = useCallback(
-    async (name: string) => {
-      await window.topolome.createCategory(name);
+    async (name: string, description: string) => {
+      const saved = await window.topolome.createCategory(name);
+      if (description.trim()) {
+        await window.topolome.setCategoryMeta(saved, {
+          description: description.trim(),
+          sources: [],
+        });
+      }
       await refresh();
     },
     [refresh],

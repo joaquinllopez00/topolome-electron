@@ -1,4 +1,10 @@
-export type Category = string;
+export type Category = string
+
+/** Per-category configuration stored as a `category.json` sidecar. */
+export interface CategoryMeta {
+  description: string
+  sources: string[]
+};
 
 /** Where an item came from. If a link is present the UI can open it. */
 export interface Source {

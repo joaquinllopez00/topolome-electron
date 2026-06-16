@@ -1,4 +1,4 @@
-import type { Config, Item, StoredItem, LoopStatus } from "@/types";
+import type { Config, Item, StoredItem, LoopStatus, CategoryMeta } from "@/types";
 
 declare global {
   interface Window {
@@ -9,9 +9,11 @@ declare global {
       openExternal: (url: string) => Promise<void>;
       onStoreChanged: (cb: () => void) => () => void;
       listCategories: () => Promise<string[]>;
-      createCategory: (name: string) => Promise<void>;
+      createCategory: (name: string) => Promise<string>;
       renameCategory: (from: string, to: string) => Promise<string>;
       deleteCategory: (name: string) => Promise<void>;
+      getCategoryMeta: (category: string) => Promise<CategoryMeta>;
+      setCategoryMeta: (category: string, meta: CategoryMeta) => Promise<CategoryMeta>;
       listItems: (category: string) => Promise<StoredItem[]>;
       createItem: (
         category: string,

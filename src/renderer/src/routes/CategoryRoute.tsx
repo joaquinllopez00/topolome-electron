@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { LayoutGrid, List } from "lucide-react";
+import { LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 import type { ItemView, StoredItem } from "@/types";
 import { cn } from "@/lib/utils";
 import { CategoryItemList } from "../components/CategoryItemList";
+import { CategorySettingsDialog } from "../components/CategorySettingsDialog";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -18,6 +19,7 @@ export default function CategoryRoute(): React.JSX.Element {
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDescription, setDraftDescription] = useState("");
   const [view, setView] = useState<ItemView>("grid");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     const result = await window.topolome.listItems(category);
@@ -128,11 +130,26 @@ export default function CategoryRoute(): React.JSX.Element {
               <span className="sr-only">List view</span>
             </Button>
           </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            title="Category settings"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <SlidersHorizontal />
+            <span className="sr-only">Category settings</span>
+          </Button>
           <Button size="sm" onClick={() => setAdding((v) => !v)}>
             + item
           </Button>
         </div>
       </div>
+
+      <CategorySettingsDialog
+        category={category}
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+      />
 
       {adding && (
         <Card className="mb-6 gap-2 rounded-none border-primary/50 p-4">
