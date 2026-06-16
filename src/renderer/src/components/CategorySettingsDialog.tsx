@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { LoopMode } from "@/types";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { SourceCombobox } from "./SourceCombobox";
@@ -27,6 +28,7 @@ export function CategorySettingsDialog({
 }: CategorySettingsDialogProps): React.JSX.Element {
   const [description, setDescription] = useState("");
   const [sources, setSources] = useState<string[]>([]);
+  const [loopMode, setLoopMode] = useState<LoopMode>("main");
   const [catalog, setCatalog] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -37,6 +39,7 @@ export function CategorySettingsDialog({
       ([meta, config]) => {
         setDescription(meta.description);
         setSources(meta.sources);
+        setLoopMode(meta.loopMode);
         setCatalog(config.sources);
       },
     );
@@ -48,6 +51,7 @@ export function CategorySettingsDialog({
       await window.topolome.setCategoryMeta(category, {
         description: description.trim(),
         sources,
+        loopMode,
       });
       onSaved?.();
       onOpenChange(false);
@@ -67,35 +71,50 @@ export function CategorySettingsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="px-5 py-5">
-          <FieldGroup className="gap-6 overflow-y-auto">
-            <Field>
-              <FieldLabel htmlFor="cat-description">Description</FieldLabel>
-              <FieldDescription>
-                What belongs here — be specific so the agent isn&apos;t guessing.
-              </FieldDescription>
-              <Textarea
-                id="cat-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="min-h-28"
-                placeholder="Explicit asks directed at me with a clear action — not FYIs."
-              />
-            </Field>
-            <Field>
-              <FieldLabel>Sources</FieldLabel>
-              <FieldDescription>
-                Pick from the catalog or type a new one — new entries are added to the catalog.
-              </FieldDescription>
-              <SourceCombobox
-                value={sources}
-                onChange={setSources}
-                suggestions={catalog}
-                placeholder="slack-dms"
-              />
-            </Field>
-          </FieldGroup>
-        </div>
+        <FieldGroup className="gap-6 overflow-y-auto px-5 py-5">
+          <Field>
+            <FieldLabel htmlFor="cat-description">Description</FieldLabel>
+            <FieldDescription>
+              What belongs here — be specific so the agent isn&apos;t guessing.
+            </FieldDescription>
+            <Textarea
+              id="cat-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="min-h-28"
+              placeholder="Explicit asks directed at me with a clear action — not FYIs."
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Sources</FieldLabel>
+            <FieldDescription>
+              Pick from the catalog or type a new one — new entries are added to the catalog.
+            </FieldDescription>
+            <SourceCombobox
+              value={sources}
+              onChange={setSources}
+              suggestions={catalog}
+              placeholder="slack-dms"
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="cat-loop-mode">Loop</FieldLabel>
+            <FieldDescription>
+              How this category is collected. Main loop shares one pass with the others; dedicated
+              runs its own pass each tick; off pauses collection.
+            </FieldDescription>
+            <select
+              id="cat-loop-mode"
+              value={loopMode}
+              onChange={(e) => setLoopMode(e.target.value as LoopMode)}
+              className="h-10 w-full border border-transparent border-b-input bg-transparent px-2 py-1 text-sm outline-none focus-visible:border-b-ring"
+            >
+              <option value="main">Main loop (shared pass)</option>
+              <option value="dedicated">Dedicated (own pass)</option>
+              <option value="off">Off (not collected)</option>
+            </select>
+          </Field>
+        </FieldGroup>
 
         <DialogFooter className="border-t border-border px-5 py-4">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

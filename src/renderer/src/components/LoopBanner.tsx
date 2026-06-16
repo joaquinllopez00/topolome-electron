@@ -27,8 +27,10 @@ export function LoopBanner({
 
   const dot = running ? "bg-primary animate-pulse" : enabled ? "bg-primary" : "bg-destructive";
 
+  const counter =
+    status?.passTotal && status.passTotal > 1 ? ` (${status.passIndex}/${status.passTotal})` : "";
   const label = running
-    ? "Pass running"
+    ? `${status?.activePass ?? "Working"}${counter}`
     : enabled
       ? `Loop active · every ${status?.intervalMinutes}m`
       : "No loop active";

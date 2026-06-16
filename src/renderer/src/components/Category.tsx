@@ -79,7 +79,7 @@ export function Category({ category, onRename, onDelete }: CategoryProps): React
         to={`/${encodeURIComponent(category)}`}
         className={({ isActive }) =>
           cn(
-            "flex w-full items-center gap-2 px-4 py-1.5 text-sm transition-colors",
+            "flex w-full items-center gap-2 px-4 py-1.5 text-sm transition-colors duration-150 hover:transition-none",
             isActive
               ? "bg-accent text-accent-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -94,7 +94,7 @@ export function Category({ category, onRename, onDelete }: CategoryProps): React
         )}
       </NavLink>
 
-      <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+      <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-hover:transition-none">
         <div className="flex items-center border border-border bg-card shadow-sm">
           <Button
             type="button"

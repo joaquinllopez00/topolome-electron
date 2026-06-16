@@ -185,6 +185,7 @@ export default function CategoryRoute(): React.JSX.Element {
       ) : (
         <CategoryItemList
           items={visible}
+          category={category}
           view={view}
           onToggleArchive={handleToggleArchive}
           onDelete={handleDelete}

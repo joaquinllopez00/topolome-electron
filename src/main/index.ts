@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, nativeImage, nativeTheme } from "electron";
+import { app, shell, BrowserWindow, ipcMain, nativeImage, nativeTheme, dialog } from "electron";
 import { existsSync } from "fs";
 import { join } from "path";
 import {
@@ -21,7 +21,7 @@ import {
   type Config,
   type CategoryMeta,
 } from "./store";
-import { startLoop, stopLoop, getLoopStatus, getLoopLogs } from "./loop";
+import { startLoop, stopLoop, getLoopStatus, getLoopLogs, startActionSession } from "./loop";
 
 function resolveIconPath(): string | undefined {
   const candidates = [
@@ -112,6 +112,18 @@ app.whenReady().then(async () => {
     updateItem(category, id, patch),
   );
   ipcMain.handle("items:delete", (_e, category: string, id: string) => deleteItem(category, id));
+
+  ipcMain.handle("dialog:pickDirectory", async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory", "createDirectory"],
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+  ipcMain.handle(
+    "session:start",
+    (_e, opts: { category: string; itemId: string; dir: string; prompt: string }) =>
+      startActionSession(opts),
+  );
 
   ipcMain.handle("loop:start", () => startLoop());
   ipcMain.handle("loop:stop", () => stopLoop());

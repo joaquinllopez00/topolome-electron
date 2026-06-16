@@ -58,6 +58,7 @@ export default function App(): React.JSX.Element {
         await window.topolome.setCategoryMeta(saved, {
           description: description.trim(),
           sources: [],
+          loopMode: "main",
         });
       }
       await refresh();

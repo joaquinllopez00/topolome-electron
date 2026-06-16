@@ -1,24 +1,40 @@
 import { spawn, type ChildProcess } from "child_process";
 import { BrowserWindow } from "electron";
-import { DATA_ROOT, getConfig, listCategories, type Config } from "./store";
+import {
+  DATA_ROOT,
+  getConfig,
+  listCategories,
+  getCategoryMeta,
+  itemFilePath,
+  type Config,
+  type CategoryMeta,
+} from "./store";
 
 /**
  * Drives the categorization agent from inside the app.
  *
  * The main process owns the schedule: a setInterval ticks every
- * `loop_interval_minutes` and spawns ONE headless agent pass per tick.
+ * `loop_interval_minutes`. Each tick runs a SEQUENCE of jobs: one shared "Main
+ * loop" pass over all `main`-mode categories, then one dedicated pass per
+ * `dedicated`-mode category. Jobs run sequentially.
  *
- * Overlap rule: if a pass is still running when the next tick fires, that tick
- * is SKIPPED — we never run two passes at once and we never kill an in-flight
- * one (killing mid-pass could leave half-written JSON in the data dir).
+ * Overlap rule: if a tick's jobs are still running when the next tick fires,
+ * that tick is SKIPPED — we never run two jobs at once and never kill an
+ * in-flight one (killing mid-pass could leave half-written JSON in the data
+ * dir). Stopping the loop lets the current job finish but launches no more.
  */
 
 export interface LoopStatus {
   /** The interval scheduler is on. */
   enabled: boolean;
-  /** A pass is executing right now. */
+  /** A job is executing right now. */
   running: boolean;
   intervalMinutes: number;
+  /** Label of the job currently running (e.g. "Main loop" or a category name). */
+  activePass: string | null;
+  /** 1-based index and total of jobs in the current tick. */
+  passIndex: number | null;
+  passTotal: number | null;
   lastRunAt: number | null;
   lastExitCode: number | null;
   lastError: string | null;
@@ -26,6 +42,8 @@ export interface LoopStatus {
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let child: ChildProcess | null = null;
+/** True while a tick's job sequence is in flight (tick-level overlap guard). */
+let ticking = false;
 /** PATH as seen by a login shell — GUI apps don't inherit it (see resolveEnv). */
 let cachedPath: string | null = null;
 
@@ -48,6 +66,9 @@ const status: LoopStatus = {
   enabled: false,
   running: false,
   intervalMinutes: 10,
+  activePass: null,
+  passIndex: null,
+  passTotal: null,
   lastRunAt: null,
   lastExitCode: null,
   lastError: null,
@@ -82,41 +103,87 @@ async function resolveEnv(): Promise<NodeJS.ProcessEnv> {
   return { ...process.env, PATH: cachedPath };
 }
 
-/** Single-pass operating instructions, built from the live config + categories. */
-function buildPassPrompt(config: Config, categories: string[]): string {
-  const sources = config.sources.length ? config.sources.join(", ") : "see config.json";
-  const categoryList = categories.length
-    ? categories.join(", ")
-    : "(none yet — create directories as needed)";
-  const operator = config.system_prompt.trim() || "(define this in config.json → system_prompt)";
+/** A category and its loaded sidecar manifest. */
+interface CategoryEntry {
+  name: string;
+  meta: CategoryMeta;
+}
 
-  return `Act as topolome's categorization agent. Run exactly ONE pass, then stop.
-
-OPERATOR INSTRUCTIONS (what to collect, from config.json → system_prompt):
-${operator}
-
-THIS PASS:
-1. Read ${DATA_ROOT}/config.json for the live sources and system_prompt.
-2. Check every source: ${sources}
-3. For each candidate, decide if it belongs per the operator instructions. Skip anything that doesn't.
-4. Pick the single best category — a directory under ${DATA_ROOT}/categories/.
-   Existing categories: ${categoryList}.
-   Reuse an existing one when it fits; otherwise create a new directory with a short, filesystem-safe name.
-5. Write each new item as its own file:
-     ${DATA_ROOT}/categories/<category>/<slug>.json
-   with EXACTLY this shape:
+/** The item-file contract, shared by every prompt so it stays consistent. */
+function itemShapeSpec(categoryPath: string): string {
+  return `Write each item as its own file at ${categoryPath}/<slug>.json with EXACTLY this shape:
      {
        "title": string,
        "description": string,
        "archived": false,
-       "source": { "sourceFriendlyName": string, "linkToOpen"?: string }
+       "source": { "sourceFriendlyName": string, "linkToOpen"?: string },
+       "suggestedAction"?: { "title": string, "sessionStartPrompt": string }
      }
    "source" records where the item came from: "sourceFriendlyName" is a short human label
-   (e.g. "Slack #general", "Hacker News"), and "linkToOpen" is an optional URL or deep link
-   that opens the original (e.g. a message permalink) — include it whenever one is available.
-   Use a filesystem-safe slug of the title for <slug>.
-6. Dedupe: before writing, read the existing files in the target category and skip items already present.
-7. Never delete, overwrite, or unarchive items you didn't create this pass.`;
+   (e.g. "Slack #general"); "linkToOpen" is an optional URL or deep link that opens the
+   original (e.g. a message permalink) — include it whenever one is available.
+   "suggestedAction" is OPTIONAL — include it ONLY if the item is actionable (a concrete next
+   step someone could take). "title" is a short imperative label (e.g. "Have an agent investigate");
+   "sessionStartPrompt" is a ready-to-run prompt that would carry out that action in a Claude
+   session. Omit "suggestedAction" entirely when the item is not actionable.
+   Use a filesystem-safe slug of the title for <slug>.`;
+}
+
+function describe(meta: CategoryMeta): string {
+  return meta.description.trim() || "(no description — infer from the category name)";
+}
+function sourcesOf(meta: CategoryMeta): string {
+  return meta.sources.length ? meta.sources.join(", ") : "(no sources configured)";
+}
+
+/** The shared pass covering every `main`-mode category in one invocation. */
+function buildMainPrompt(config: Config, cats: CategoryEntry[]): string {
+  const operator = config.system_prompt.trim() || "(no operator instructions set)";
+  const table = cats
+    .map((c) => `- ${c.name}\n    belongs: ${describe(c.meta)}\n    sources: ${sourcesOf(c.meta)}`)
+    .join("\n");
+  const union = Array.from(new Set(cats.flatMap((c) => c.meta.sources)));
+  const sourceList = union.length ? union.join(", ") : "(none configured — nothing to collect)";
+
+  return `Act as topolome's categorization agent. Run exactly ONE pass over the categories below, then stop.
+
+OPERATOR RULES (cross-cutting, from config.json → system_prompt):
+${operator}
+
+CATEGORIES (route each item using these per-category "belongs" rules):
+${table}
+
+THIS PASS:
+1. Check these sources (the union of the categories' sources): ${sourceList}.
+2. For each candidate item, test it against EACH category's "belongs" rule above.
+   File it into every category it matches — an item may belong to more than one, so write a
+   separate copy in each. Skip items that match no category.
+3. ${itemShapeSpec(`${DATA_ROOT}/categories/<category>`)}
+4. Dedupe WITHIN each category: before writing, read existing files there and skip items already
+   present. Duplicates ACROSS categories are expected and fine.
+5. Never delete, overwrite, or unarchive items you didn't create this pass.`;
+}
+
+/** A scoped pass for a single `dedicated`-mode category. */
+function buildDedicatedPrompt(config: Config, entry: CategoryEntry): string {
+  const operator = config.system_prompt.trim() || "(no operator instructions set)";
+  const path = `${DATA_ROOT}/categories/${entry.name}`;
+
+  return `Act as topolome's categorization agent for the single category "${entry.name}". Run exactly ONE pass, then stop.
+
+OPERATOR RULES (cross-cutting, from config.json → system_prompt):
+${operator}
+
+THIS CATEGORY:
+  belongs: ${describe(entry.meta)}
+  sources: ${sourcesOf(entry.meta)}
+
+THIS PASS:
+1. Check this category's sources: ${sourcesOf(entry.meta)}.
+2. For each candidate, decide if it matches the "belongs" rule above. Skip anything that doesn't.
+3. ${itemShapeSpec(path)}
+4. Dedupe: before writing, read existing files in this category and skip items already present.
+5. Never delete, overwrite, or unarchive items you didn't create this pass.`;
 }
 
 /**
@@ -163,82 +230,116 @@ function formatEvent(line: string): string {
   }
 }
 
-async function runPass(): Promise<void> {
-  // Overlap guard: a pass is still running, so skip this tick.
-  if (child) return;
+/**
+ * Spawn one headless agent job and resolve when it exits. Streams stream-json
+ * events to the live log. Permission posture comes from config: under
+ * acceptEdits anything beyond file edits (Bash, MCP reads) is auto-DENIED;
+ * bypassPermissions grants full tool access. stdin is ignored so `claude -p`
+ * doesn't stall waiting on it.
+ */
+function runJob(
+  label: string,
+  prompt: string,
+  env: NodeJS.ProcessEnv,
+  permissionMode: "acceptEdits" | "bypassPermissions",
+): Promise<void> {
+  return new Promise((resolve) => {
+    child = spawn(
+      "claude",
+      ["-p", prompt, "--permission-mode", permissionMode, "--output-format", "stream-json", "--verbose"],
+      { cwd: DATA_ROOT, env, stdio: ["ignore", "pipe", "pipe"] },
+    );
 
-  const config = await getConfig();
-  const env = await resolveEnv();
-  const prompt = buildPassPrompt(config, await listCategories());
-  // Fall back to the safe mode if config.json was hand-edited to junk.
-  const permissionMode =
-    config.loop_permission_mode === "bypassPermissions" ? "bypassPermissions" : "acceptEdits";
+    appendLog(`\n── ${label} started ${new Date().toLocaleTimeString()} ──\n`);
 
-  // Headless print mode, scoped to edits in the data dir — no interactive
-  // approval is possible from a spawned process. Prompt passed as a clean argv
-  // element so there's no shell-escaping to get wrong.
-  // stream-json + verbose emits one JSON event per line as the agent works,
-  // so we can show live progress instead of one dump at the end.
-  //
-  // Permission posture comes from config (loop_permission_mode). An autonomous
-  // pass can't answer interactive approval prompts: under acceptEdits anything
-  // beyond file edits (Bash, MCP source reads like Slack) is auto-DENIED;
-  // bypassPermissions grants full tool access for arbitrary sources.
-  //
-  // stdin is ignored so `claude -p` doesn't stall 3s waiting on it.
-  child = spawn(
-    "claude",
-    [
-      "-p",
-      prompt,
-      "--permission-mode",
-      permissionMode,
-      "--output-format",
-      "stream-json",
-      "--verbose",
-    ],
-    { cwd: DATA_ROOT, env, stdio: ["ignore", "pipe", "pipe"] },
+    let stderr = "";
+    let stdoutBuffer = "";
+    child.stdout?.on("data", (d) => {
+      stdoutBuffer += d.toString();
+      const lines = stdoutBuffer.split("\n");
+      stdoutBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        const formatted = formatEvent(line);
+        if (formatted) appendLog(formatted + "\n");
+      }
+    });
+    child.stderr?.on("data", (d) => {
+      const s = d.toString();
+      stderr += s;
+      appendLog(s);
+    });
+
+    child.on("error", (err) => {
+      status.lastError = err.message;
+      appendLog(`\n[error] ${err.message}\n`);
+    });
+
+    child.on("close", (code) => {
+      child = null;
+      status.lastExitCode = code;
+      if (code !== 0) {
+        status.lastError = stderr.trim().slice(-500) || `${label} exited with code ${code}`;
+      }
+      appendLog(`\n── ${label} finished (exit ${code}) ──\n`);
+      resolve();
+    });
+  });
+}
+
+/** Build the ordered job list for a tick from the categories' loop modes. */
+async function buildJobs(config: Config): Promise<{ label: string; prompt: string }[]> {
+  const names = await listCategories();
+  const entries: CategoryEntry[] = await Promise.all(
+    names.map(async (name) => ({ name, meta: await getCategoryMeta(name) })),
   );
 
+  const jobs: { label: string; prompt: string }[] = [];
+  const mainCats = entries.filter((e) => e.meta.loopMode === "main");
+  if (mainCats.length) jobs.push({ label: "Main loop", prompt: buildMainPrompt(config, mainCats) });
+  for (const entry of entries.filter((e) => e.meta.loopMode === "dedicated")) {
+    jobs.push({ label: entry.name, prompt: buildDedicatedPrompt(config, entry) });
+  }
+  return jobs;
+}
+
+/** Run one tick: all jobs in sequence. Skips if a prior tick is still running. */
+async function runTick(): Promise<void> {
+  if (ticking) return; // overlap guard at the tick level
+  ticking = true;
   status.running = true;
   status.lastError = null;
   broadcast();
-  appendLog(`\n── pass started ${new Date().toLocaleTimeString()} ──\n`);
 
-  let stderr = "";
-  // stdout arrives in arbitrary chunks; buffer until we have whole lines.
-  let stdoutBuffer = "";
-  child.stdout?.on("data", (d) => {
-    stdoutBuffer += d.toString();
-    const lines = stdoutBuffer.split("\n");
-    stdoutBuffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const formatted = formatEvent(line);
-      if (formatted) appendLog(formatted + "\n");
+  try {
+    const config = await getConfig();
+    const env = await resolveEnv();
+    const permissionMode =
+      config.loop_permission_mode === "bypassPermissions" ? "bypassPermissions" : "acceptEdits";
+    const jobs = await buildJobs(config);
+
+    if (!jobs.length) {
+      appendLog(`\n── tick skipped: no active categories ──\n`);
+      return;
     }
-  });
-  child.stderr?.on("data", (d) => {
-    const s = d.toString();
-    stderr += s;
-    appendLog(s);
-  });
 
-  child.on("error", (err) => {
-    status.lastError = err.message;
-    appendLog(`\n[error] ${err.message}\n`);
-  });
-
-  child.on("close", (code) => {
-    child = null;
+    status.passTotal = jobs.length;
+    for (let i = 0; i < jobs.length; i++) {
+      // Stopping the loop lets the current job finish but launches no more.
+      if (!status.enabled && i > 0) break;
+      status.activePass = jobs[i].label;
+      status.passIndex = i + 1;
+      broadcast();
+      await runJob(jobs[i].label, jobs[i].prompt, env, permissionMode);
+    }
+  } finally {
+    ticking = false;
     status.running = false;
+    status.activePass = null;
+    status.passIndex = null;
+    status.passTotal = null;
     status.lastRunAt = Date.now();
-    status.lastExitCode = code;
-    if (code !== 0) {
-      status.lastError = stderr.trim().slice(-500) || `agent exited with code ${code}`;
-    }
-    appendLog(`\n── pass finished (exit ${code}) ──\n`);
     broadcast();
-  });
+  }
 }
 
 export async function startLoop(): Promise<LoopStatus> {
@@ -247,17 +348,80 @@ export async function startLoop(): Promise<LoopStatus> {
   status.intervalMinutes = config.loop_interval_minutes;
   broadcast();
 
-  await runPass(); // run one immediately, then on the interval
+  await runTick(); // run one tick immediately, then on the interval
 
   if (timer) clearInterval(timer);
   timer = setInterval(() => {
-    void runPass();
+    void runTick();
   }, config.loop_interval_minutes * 60_000);
 
   return status;
 }
 
-/** Stop scheduling. An in-flight pass is left to finish on its own. */
+/**
+ * Launch a Claude session for an item's suggested action, in the user-chosen
+ * directory. The session is seeded with the action prompt plus instructions to
+ * write progress back into the item file. Resolves with the session id (read
+ * from the first stream-json event) so the UI can show a `claude --resume`
+ * command; the process then keeps running in the background.
+ */
+export async function startActionSession(opts: {
+  category: string;
+  itemId: string;
+  dir: string;
+  prompt: string;
+}): Promise<{ sessionId: string }> {
+  const env = await resolveEnv();
+  const itemPath = itemFilePath(opts.category, opts.itemId);
+  const prompt = `${opts.prompt}
+
+---
+Report progress into the topolome item file at:
+  ${itemPath}
+Append entries to its "updates" array as { "at": "<ISO 8601 timestamp>", "text": "<what you did or found>" }, preserving everything else in the file. You may also revise or clear its "suggestedAction" ({ "title", "sessionStartPrompt" }) as the work progresses.`;
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(
+      "claude",
+      ["-p", prompt, "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose"],
+      { cwd: opts.dir, env, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let buffer = "";
+    let settled = false;
+    proc.stdout?.on("data", (d) => {
+      if (settled) return;
+      buffer += d.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        try {
+          const ev = JSON.parse(line);
+          if (typeof ev.session_id === "string") {
+            settled = true;
+            resolve({ sessionId: ev.session_id });
+            return;
+          }
+        } catch {
+          // not a JSON line yet
+        }
+      }
+    });
+    proc.on("error", (err) => {
+      if (!settled) {
+        settled = true;
+        reject(err);
+      }
+    });
+    proc.on("close", (code) => {
+      if (!settled) {
+        settled = true;
+        reject(new Error(`session exited (code ${code}) before it started`));
+      }
+    });
+  });
+}
+
+/** Stop scheduling. The in-flight job finishes; no further jobs are launched. */
 export function stopLoop(): LoopStatus {
   if (timer) {
     clearInterval(timer);

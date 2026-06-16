@@ -4,6 +4,9 @@ interface LoopStatus {
   enabled: boolean;
   running: boolean;
   intervalMinutes: number;
+  activePass: string | null;
+  passIndex: number | null;
+  passTotal: number | null;
   lastRunAt: number | null;
   lastExitCode: number | null;
   lastError: string | null;
@@ -21,6 +24,9 @@ const api = {
   }) => ipcRenderer.invoke("config:set", patch),
   getStoreRoot: () => ipcRenderer.invoke("store:root"),
   openExternal: (url: string) => ipcRenderer.invoke("shell:openExternal", url),
+  pickDirectory: () => ipcRenderer.invoke("dialog:pickDirectory"),
+  startSession: (opts: { category: string; itemId: string; dir: string; prompt: string }) =>
+    ipcRenderer.invoke("session:start", opts),
   /** Subscribe to filesystem changes in the categories tree. Returns unsubscribe. */
   onStoreChanged: (cb: () => void) => {
     const listener = (): void => cb();

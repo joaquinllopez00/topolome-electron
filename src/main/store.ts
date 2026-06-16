@@ -27,6 +27,14 @@ export type Theme = "light" | "dark";
 /** How items are laid out within a category. */
 export type ItemView = "grid" | "list";
 
+/**
+ * How a category participates in the loop:
+ * - `main`: folded into the shared manifest pass with other `main` categories.
+ * - `dedicated`: gets its own scoped pass each tick.
+ * - `off`: not pulled by the loop at all.
+ */
+export type LoopMode = "main" | "dedicated" | "off";
+
 export interface Config {
   sources: string[];
   system_prompt: string;
@@ -53,6 +61,8 @@ export interface Config {
 export interface CategoryMeta {
   description: string;
   sources: string[];
+  /** How this category participates in the loop. */
+  loopMode: LoopMode;
 }
 
 /** Where an item came from. If a link is present the UI can open it. */
@@ -61,11 +71,25 @@ export interface Source {
   sourceFriendlyName: string;
 }
 
+/** An actionable next step the agent suggests for an item. */
+export interface SuggestedAction {
+  title: string;
+  sessionStartPrompt: string;
+}
+
+/** Progress note written back by an action session, directly into the item file. */
+export interface ItemUpdate {
+  at: string;
+  text: string;
+}
+
 export interface Item {
   title: string;
   description: string;
   archived: boolean;
   source?: Source;
+  suggestedAction?: SuggestedAction;
+  updates?: ItemUpdate[];
 }
 
 /** An item as exposed to the renderer: file contents plus its filename stem. */
@@ -179,9 +203,11 @@ export async function getCategoryMeta(category: string): Promise<CategoryMeta> {
       sources: Array.isArray(parsed.sources)
         ? parsed.sources.filter((s: unknown): s is string => typeof s === "string")
         : [],
+      loopMode:
+        parsed.loopMode === "dedicated" || parsed.loopMode === "off" ? parsed.loopMode : "main",
     };
   } catch {
-    return { description: "", sources: [] };
+    return { description: "", sources: [], loopMode: "main" };
   }
 }
 
@@ -196,6 +222,7 @@ export async function setCategoryMeta(category: string, meta: CategoryMeta): Pro
   const next: CategoryMeta = {
     description: meta.description.trim(),
     sources: Array.from(new Set(meta.sources.map((s) => s.trim()).filter(Boolean))),
+    loopMode: meta.loopMode,
   };
   await fs.writeFile(join(dir, CATEGORY_META_FILE), JSON.stringify(next, null, 2), "utf-8");
 
@@ -220,6 +247,28 @@ function parseSource(raw: unknown): Source | undefined {
   };
 }
 
+function parseSuggestedAction(raw: unknown): SuggestedAction | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.title !== "string" || !obj.title.trim()) return undefined;
+  if (typeof obj.sessionStartPrompt !== "string" || !obj.sessionStartPrompt.trim()) return undefined;
+  return { title: obj.title, sessionStartPrompt: obj.sessionStartPrompt };
+}
+
+function parseUpdates(raw: unknown): ItemUpdate[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const updates = raw
+    .filter((u): u is Record<string, unknown> => !!u && typeof u === "object")
+    .map((u) => ({ at: String(u.at ?? ""), text: String(u.text ?? "") }))
+    .filter((u) => u.text);
+  return updates.length ? updates : undefined;
+}
+
+/** Absolute path to an item's JSON file. */
+export function itemFilePath(category: string, id: string): string {
+  return join(CATEGORIES_DIR, category, `${id}.json`);
+}
+
 export async function listItems(category: string): Promise<StoredItem[]> {
   const dir = join(CATEGORIES_DIR, category);
   if (!(await exists(dir))) return [];
@@ -237,6 +286,8 @@ export async function listItems(category: string): Promise<StoredItem[]> {
           description: String(parsed.description ?? ""),
           archived: Boolean(parsed.archived ?? false),
           source: parseSource(parsed.source),
+          suggestedAction: parseSuggestedAction(parsed.suggestedAction),
+          updates: parseUpdates(parsed.updates),
         } as StoredItem;
       } catch {
         return null;
@@ -273,8 +324,10 @@ async function writeItem(dir: string, id: string, item: Item): Promise<void> {
     title: item.title,
     description: item.description,
     archived: item.archived,
-    // Preserve the agent-provided source through edits/archives.
+    // Preserve agent-provided fields through edits/archives.
     ...(item.source ? { source: item.source } : {}),
+    ...(item.suggestedAction ? { suggestedAction: item.suggestedAction } : {}),
+    ...(item.updates?.length ? { updates: item.updates } : {}),
   };
   await fs.writeFile(join(dir, `${id}.json`), JSON.stringify(payload, null, 2), "utf-8");
 }

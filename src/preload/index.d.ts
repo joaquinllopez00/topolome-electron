@@ -7,6 +7,13 @@ declare global {
       setConfig: (patch: Partial<Config>) => Promise<Config>;
       getStoreRoot: () => Promise<string>;
       openExternal: (url: string) => Promise<void>;
+      pickDirectory: () => Promise<string | null>;
+      startSession: (opts: {
+        category: string;
+        itemId: string;
+        dir: string;
+        prompt: string;
+      }) => Promise<{ sessionId: string }>;
       onStoreChanged: (cb: () => void) => () => void;
       listCategories: () => Promise<string[]>;
       createCategory: (name: string) => Promise<string>;

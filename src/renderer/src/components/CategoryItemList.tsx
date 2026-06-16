@@ -4,6 +4,7 @@ import { CategoryItem } from "./CategoryItem";
 
 interface CategoryItemListProps {
   items: StoredItem[];
+  category: string;
   view: ItemView;
   onToggleArchive: (item: StoredItem) => void;
   onDelete: (item: StoredItem) => void;
@@ -12,6 +13,7 @@ interface CategoryItemListProps {
 
 export function CategoryItemList({
   items,
+  category,
   view,
   onToggleArchive,
   onDelete,
@@ -37,6 +39,7 @@ export function CategoryItemList({
         <CategoryItem
           key={item.id}
           item={item}
+          category={category}
           onToggleArchive={onToggleArchive}
           onDelete={onDelete}
           onSave={onSave}

@@ -1,14 +1,26 @@
 import { useState } from "react";
-import { Archive, ArchiveRestore, Pencil, Trash2, Check, X, ExternalLink } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  ExternalLink,
+  Sparkles,
+  MessagesSquare,
+} from "lucide-react";
 import type { StoredItem } from "@/types";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
+import { ItemActionDialog } from "./ItemActionDialog";
 
 interface CategoryItemProps {
   item: StoredItem;
+  category: string;
   onToggleArchive: (item: StoredItem) => void;
   onDelete: (item: StoredItem) => void;
   onSave: (item: StoredItem, patch: { title: string; description: string }) => void;
@@ -17,6 +29,7 @@ interface CategoryItemProps {
 /** A single item card within a category. Supports inline edit, archive, delete. */
 export function CategoryItem({
   item,
+  category,
   onToggleArchive,
   onDelete,
   onSave,
@@ -24,6 +37,7 @@ export function CategoryItem({
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description);
+  const [actionOpen, setActionOpen] = useState(false);
 
   const save = (): void => {
     if (!title.trim()) return;
@@ -99,6 +113,29 @@ export function CategoryItem({
             {item.source.sourceFriendlyName}
           </span>
         ))}
+
+      {(item.suggestedAction || item.updates?.length) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {item.suggestedAction && (
+            <Button size="xs" variant="secondary" onClick={() => setActionOpen(true)}>
+              <Sparkles /> {item.suggestedAction.title}
+            </Button>
+          )}
+          {item.updates?.length ? (
+            <Button size="xs" variant="ghost" onClick={() => setActionOpen(true)}>
+              <MessagesSquare /> {item.updates.length} update
+              {item.updates.length === 1 ? "" : "s"}
+            </Button>
+          ) : null}
+        </div>
+      )}
+
+      <ItemActionDialog
+        item={item}
+        category={category}
+        open={actionOpen}
+        onOpenChange={setActionOpen}
+      />
 
       <div className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <Button
