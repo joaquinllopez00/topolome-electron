@@ -1,6 +1,6 @@
-import { spawn, type ChildProcess } from 'child_process'
-import { BrowserWindow } from 'electron'
-import { DATA_ROOT, getConfig, type Config } from './store'
+import { spawn, type ChildProcess } from "child_process";
+import { BrowserWindow } from "electron";
+import { DATA_ROOT, getConfig, listCategories, type Config } from "./store";
 
 /**
  * Drives the categorization agent from inside the app.
@@ -15,32 +15,32 @@ import { DATA_ROOT, getConfig, type Config } from './store'
 
 export interface LoopStatus {
   /** The interval scheduler is on. */
-  enabled: boolean
+  enabled: boolean;
   /** A pass is executing right now. */
-  running: boolean
-  intervalMinutes: number
-  lastRunAt: number | null
-  lastExitCode: number | null
-  lastError: string | null
+  running: boolean;
+  intervalMinutes: number;
+  lastRunAt: number | null;
+  lastExitCode: number | null;
+  lastError: string | null;
 }
 
-let timer: ReturnType<typeof setInterval> | null = null
-let child: ChildProcess | null = null
+let timer: ReturnType<typeof setInterval> | null = null;
+let child: ChildProcess | null = null;
 /** PATH as seen by a login shell — GUI apps don't inherit it (see resolveEnv). */
-let cachedPath: string | null = null
+let cachedPath: string | null = null;
 
 /** Rolling combined stdout+stderr log, capped so it can't grow unbounded. */
-const MAX_LOG_CHARS = 100_000
-let logs = ''
+const MAX_LOG_CHARS = 100_000;
+let logs = "";
 
 export function getLoopLogs(): string {
-  return logs
+  return logs;
 }
 
 function appendLog(chunk: string): void {
-  logs = (logs + chunk).slice(-MAX_LOG_CHARS)
+  logs = (logs + chunk).slice(-MAX_LOG_CHARS);
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send('loop:output', chunk)
+    win.webContents.send("loop:output", chunk);
   }
 }
 
@@ -50,17 +50,17 @@ const status: LoopStatus = {
   intervalMinutes: 10,
   lastRunAt: null,
   lastExitCode: null,
-  lastError: null
-}
+  lastError: null,
+};
 
 function broadcast(): void {
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send('loop:status', status)
+    win.webContents.send("loop:status", status);
   }
 }
 
 export function getLoopStatus(): LoopStatus {
-  return status
+  return status;
 }
 
 /**
@@ -71,27 +71,24 @@ export function getLoopStatus(): LoopStatus {
 async function resolveEnv(): Promise<NodeJS.ProcessEnv> {
   if (cachedPath === null) {
     cachedPath = await new Promise<string>((resolve) => {
-      const shell = process.env.SHELL || '/bin/zsh'
-      const probe = spawn(shell, ['-lc', 'echo $PATH'])
-      let out = ''
-      probe.stdout?.on('data', (d) => (out += d.toString()))
-      probe.on('close', () => resolve(out.trim() || process.env.PATH || ''))
-      probe.on('error', () => resolve(process.env.PATH || ''))
-    })
+      const shell = process.env.SHELL || "/bin/zsh";
+      const probe = spawn(shell, ["-lc", "echo $PATH"]);
+      let out = "";
+      probe.stdout?.on("data", (d) => (out += d.toString()));
+      probe.on("close", () => resolve(out.trim() || process.env.PATH || ""));
+      probe.on("error", () => resolve(process.env.PATH || ""));
+    });
   }
-  return { ...process.env, PATH: cachedPath }
+  return { ...process.env, PATH: cachedPath };
 }
 
-/** Single-pass operating instructions, built from the live config. */
-function buildPassPrompt(config: Config): string {
-  const sources = config.sources.length
-    ? config.sources.join(', ')
-    : 'see config.json'
-  const tags = config.tags.length
-    ? config.tags.join(', ')
-    : '(none defined — create categories as needed)'
-  const operator =
-    config.system_prompt.trim() || '(define this in config.json → system_prompt)'
+/** Single-pass operating instructions, built from the live config + categories. */
+function buildPassPrompt(config: Config, categories: string[]): string {
+  const sources = config.sources.length ? config.sources.join(", ") : "see config.json";
+  const categoryList = categories.length
+    ? categories.join(", ")
+    : "(none yet — create directories as needed)";
+  const operator = config.system_prompt.trim() || "(define this in config.json → system_prompt)";
 
   return `Act as topolome's categorization agent. Run exactly ONE pass, then stop.
 
@@ -99,18 +96,27 @@ OPERATOR INSTRUCTIONS (what to collect, from config.json → system_prompt):
 ${operator}
 
 THIS PASS:
-1. Read ${DATA_ROOT}/config.json for the live sources, tags, system_prompt, and item_delimiter.
+1. Read ${DATA_ROOT}/config.json for the live sources and system_prompt.
 2. Check every source: ${sources}
-   Split multi-item content on the configured item_delimiter.
 3. For each candidate, decide if it belongs per the operator instructions. Skip anything that doesn't.
-4. Pick the single best category. Allowed tags: ${tags}.
-   Categories are directories under ${DATA_ROOT}/categories/. Reuse an existing one when it fits; otherwise create the directory.
+4. Pick the single best category — a directory under ${DATA_ROOT}/categories/.
+   Existing categories: ${categoryList}.
+   Reuse an existing one when it fits; otherwise create a new directory with a short, filesystem-safe name.
 5. Write each new item as its own file:
      ${DATA_ROOT}/categories/<category>/<slug>.json
-   with EXACTLY this shape: { "title": string, "description": string, "archived": false }
+   with EXACTLY this shape:
+     {
+       "title": string,
+       "description": string,
+       "archived": false,
+       "source": { "sourceFriendlyName": string, "linkToOpen"?: string }
+     }
+   "source" records where the item came from: "sourceFriendlyName" is a short human label
+   (e.g. "Slack #general", "Hacker News"), and "linkToOpen" is an optional URL or deep link
+   that opens the original (e.g. a message permalink) — include it whenever one is available.
    Use a filesystem-safe slug of the title for <slug>.
 6. Dedupe: before writing, read the existing files in the target category and skip items already present.
-7. Never delete, overwrite, or unarchive items you didn't create this pass.`
+7. Never delete, overwrite, or unarchive items you didn't create this pass.`;
 }
 
 /**
@@ -118,59 +124,55 @@ THIS PASS:
  * for events we don't surface, and falls back to the raw line if it isn't JSON.
  */
 function formatEvent(line: string): string {
-  const trimmed = line.trim()
-  if (!trimmed) return ''
+  const trimmed = line.trim();
+  if (!trimmed) return "";
   let event: {
-    type?: string
-    subtype?: string
-    result?: string
-    total_cost_usd?: number
-    message?: { content?: Array<{ type?: string; text?: string; name?: string }> }
-  }
+    type?: string;
+    subtype?: string;
+    result?: string;
+    total_cost_usd?: number;
+    message?: { content?: Array<{ type?: string; text?: string; name?: string }> };
+  };
   try {
-    event = JSON.parse(trimmed)
+    event = JSON.parse(trimmed);
   } catch {
-    return trimmed // not JSON — show it raw
+    return trimmed; // not JSON — show it raw
   }
 
   switch (event.type) {
-    case 'system':
-      return event.subtype === 'init' ? '▸ session started' : ''
-    case 'assistant': {
-      const parts: string[] = []
+    case "system":
+      return event.subtype === "init" ? "▸ session started" : "";
+    case "assistant": {
+      const parts: string[] = [];
       for (const block of event.message?.content ?? []) {
-        if (block.type === 'text' && block.text?.trim()) {
-          parts.push(block.text.trim())
-        } else if (block.type === 'tool_use') {
-          parts.push(`→ ${block.name}`)
+        if (block.type === "text" && block.text?.trim()) {
+          parts.push(block.text.trim());
+        } else if (block.type === "tool_use") {
+          parts.push(`→ ${block.name}`);
         }
       }
-      return parts.join('\n')
+      return parts.join("\n");
     }
-    case 'result': {
+    case "result": {
       const cost =
-        typeof event.total_cost_usd === 'number'
-          ? ` ($${event.total_cost_usd.toFixed(4)})`
-          : ''
-      return `✓ ${event.subtype ?? 'done'}${cost}`
+        typeof event.total_cost_usd === "number" ? ` ($${event.total_cost_usd.toFixed(4)})` : "";
+      return `✓ ${event.subtype ?? "done"}${cost}`;
     }
     default:
-      return ''
+      return "";
   }
 }
 
 async function runPass(): Promise<void> {
   // Overlap guard: a pass is still running, so skip this tick.
-  if (child) return
+  if (child) return;
 
-  const config = await getConfig()
-  const env = await resolveEnv()
-  const prompt = buildPassPrompt(config)
+  const config = await getConfig();
+  const env = await resolveEnv();
+  const prompt = buildPassPrompt(config, await listCategories());
   // Fall back to the safe mode if config.json was hand-edited to junk.
   const permissionMode =
-    config.loop_permission_mode === 'bypassPermissions'
-      ? 'bypassPermissions'
-      : 'acceptEdits'
+    config.loop_permission_mode === "bypassPermissions" ? "bypassPermissions" : "acceptEdits";
 
   // Headless print mode, scoped to edits in the data dir — no interactive
   // approval is possible from a spawned process. Prompt passed as a clean argv
@@ -185,84 +187,83 @@ async function runPass(): Promise<void> {
   //
   // stdin is ignored so `claude -p` doesn't stall 3s waiting on it.
   child = spawn(
-    'claude',
+    "claude",
     [
-      '-p',
+      "-p",
       prompt,
-      '--permission-mode',
+      "--permission-mode",
       permissionMode,
-      '--output-format',
-      'stream-json',
-      '--verbose'
+      "--output-format",
+      "stream-json",
+      "--verbose",
     ],
-    { cwd: DATA_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] }
-  )
+    { cwd: DATA_ROOT, env, stdio: ["ignore", "pipe", "pipe"] },
+  );
 
-  status.running = true
-  status.lastError = null
-  broadcast()
-  appendLog(`\n── pass started ${new Date().toLocaleTimeString()} ──\n`)
+  status.running = true;
+  status.lastError = null;
+  broadcast();
+  appendLog(`\n── pass started ${new Date().toLocaleTimeString()} ──\n`);
 
-  let stderr = ''
+  let stderr = "";
   // stdout arrives in arbitrary chunks; buffer until we have whole lines.
-  let stdoutBuffer = ''
-  child.stdout?.on('data', (d) => {
-    stdoutBuffer += d.toString()
-    const lines = stdoutBuffer.split('\n')
-    stdoutBuffer = lines.pop() ?? ''
+  let stdoutBuffer = "";
+  child.stdout?.on("data", (d) => {
+    stdoutBuffer += d.toString();
+    const lines = stdoutBuffer.split("\n");
+    stdoutBuffer = lines.pop() ?? "";
     for (const line of lines) {
-      const formatted = formatEvent(line)
-      if (formatted) appendLog(formatted + '\n')
+      const formatted = formatEvent(line);
+      if (formatted) appendLog(formatted + "\n");
     }
-  })
-  child.stderr?.on('data', (d) => {
-    const s = d.toString()
-    stderr += s
-    appendLog(s)
-  })
+  });
+  child.stderr?.on("data", (d) => {
+    const s = d.toString();
+    stderr += s;
+    appendLog(s);
+  });
 
-  child.on('error', (err) => {
-    status.lastError = err.message
-    appendLog(`\n[error] ${err.message}\n`)
-  })
+  child.on("error", (err) => {
+    status.lastError = err.message;
+    appendLog(`\n[error] ${err.message}\n`);
+  });
 
-  child.on('close', (code) => {
-    child = null
-    status.running = false
-    status.lastRunAt = Date.now()
-    status.lastExitCode = code
+  child.on("close", (code) => {
+    child = null;
+    status.running = false;
+    status.lastRunAt = Date.now();
+    status.lastExitCode = code;
     if (code !== 0) {
-      status.lastError =
-        stderr.trim().slice(-500) || `agent exited with code ${code}`
+      status.lastError = stderr.trim().slice(-500) || `agent exited with code ${code}`;
     }
-    appendLog(`\n── pass finished (exit ${code}) ──\n`)
-    broadcast()
-  })
+    appendLog(`\n── pass finished (exit ${code}) ──\n`);
+    broadcast();
+  });
 }
 
 export async function startLoop(): Promise<LoopStatus> {
-  const config = await getConfig()
-  status.enabled = true
-  status.intervalMinutes = config.loop_interval_minutes
-  broadcast()
+  const config = await getConfig();
+  status.enabled = true;
+  status.intervalMinutes = config.loop_interval_minutes;
+  broadcast();
 
-  await runPass() // run one immediately, then on the interval
+  await runPass(); // run one immediately, then on the interval
 
-  if (timer) clearInterval(timer)
+  if (timer) clearInterval(timer);
   timer = setInterval(() => {
-    void runPass()
-  }, config.loop_interval_minutes * 60_000)
+    void runPass();
+  }, config.loop_interval_minutes * 60_000);
 
-  return status
+  return status;
 }
 
 /** Stop scheduling. An in-flight pass is left to finish on its own. */
 export function stopLoop(): LoopStatus {
   if (timer) {
-    clearInterval(timer)
-    timer = null
+    clearInterval(timer);
+    timer = null;
   }
-  status.enabled = false
-  broadcast()
-  return status
+  status.enabled = false;
+  broadcast();
+  return status;
 }

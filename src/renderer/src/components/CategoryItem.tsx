@@ -1,17 +1,17 @@
-import { useState } from 'react'
-import { Archive, ArchiveRestore, Pencil, Trash2, Check, X } from 'lucide-react'
-import type { StoredItem } from '@/types'
-import { cn } from '@/lib/utils'
-import { Button } from './ui/button'
-import { Card } from './ui/card'
-import { Input } from './ui/input'
-import { Textarea } from './ui/textarea'
+import { useState } from "react";
+import { Archive, ArchiveRestore, Pencil, Trash2, Check, X, ExternalLink } from "lucide-react";
+import type { StoredItem } from "@/types";
+import { cn } from "@/lib/utils";
+import { Button } from "./ui/button";
+import { Card } from "./ui/card";
+import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
 
 interface CategoryItemProps {
-  item: StoredItem
-  onToggleArchive: (item: StoredItem) => void
-  onDelete: (item: StoredItem) => void
-  onSave: (item: StoredItem, patch: { title: string; description: string }) => void
+  item: StoredItem;
+  onToggleArchive: (item: StoredItem) => void;
+  onDelete: (item: StoredItem) => void;
+  onSave: (item: StoredItem, patch: { title: string; description: string }) => void;
 }
 
 /** A single item card within a category. Supports inline edit, archive, delete. */
@@ -19,23 +19,23 @@ export function CategoryItem({
   item,
   onToggleArchive,
   onDelete,
-  onSave
+  onSave,
 }: CategoryItemProps): React.JSX.Element {
-  const [editing, setEditing] = useState(false)
-  const [title, setTitle] = useState(item.title)
-  const [description, setDescription] = useState(item.description)
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(item.title);
+  const [description, setDescription] = useState(item.description);
 
   const save = (): void => {
-    if (!title.trim()) return
-    onSave(item, { title: title.trim(), description: description.trim() })
-    setEditing(false)
-  }
+    if (!title.trim()) return;
+    onSave(item, { title: title.trim(), description: description.trim() });
+    setEditing(false);
+  };
 
   const cancel = (): void => {
-    setTitle(item.title)
-    setDescription(item.description)
-    setEditing(false)
-  }
+    setTitle(item.title);
+    setDescription(item.description);
+    setEditing(false);
+  };
 
   if (editing) {
     return (
@@ -61,14 +61,14 @@ export function CategoryItem({
           </Button>
         </div>
       </Card>
-    )
+    );
   }
 
   return (
     <Card
       className={cn(
-        'group relative gap-2 rounded-none p-4 transition-colors hover:border-primary/50',
-        item.archived && 'opacity-40'
+        "group relative gap-2 rounded-none p-4 transition-colors hover:border-primary/50",
+        item.archived && "opacity-40",
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -80,26 +80,36 @@ export function CategoryItem({
         )}
       </div>
       {item.description && (
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          {item.description}
-        </p>
+        <p className="text-sm leading-relaxed text-muted-foreground">{item.description}</p>
       )}
+
+      {item.source &&
+        (item.source.linkToOpen ? (
+          <button
+            type="button"
+            onClick={() => window.topolome.openExternal(item.source!.linkToOpen!)}
+            title={item.source.linkToOpen}
+            className="flex w-fit items-center gap-1 text-[11px] tracking-wider text-muted-foreground uppercase transition-colors hover:text-primary"
+          >
+            <ExternalLink className="size-3" />
+            {item.source.sourceFriendlyName}
+          </button>
+        ) : (
+          <span className="w-fit text-[11px] tracking-wider text-muted-foreground uppercase">
+            {item.source.sourceFriendlyName}
+          </span>
+        ))}
 
       <div className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <Button
           size="icon-sm"
           variant="ghost"
           onClick={() => onToggleArchive(item)}
-          title={item.archived ? 'Unarchive' : 'Archive'}
+          title={item.archived ? "Unarchive" : "Archive"}
         >
           {item.archived ? <ArchiveRestore /> : <Archive />}
         </Button>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={() => setEditing(true)}
-          title="Edit"
-        >
+        <Button size="icon-sm" variant="ghost" onClick={() => setEditing(true)} title="Edit">
           <Pencil />
         </Button>
         <Button
@@ -113,5 +123,5 @@ export function CategoryItem({
         </Button>
       </div>
     </Card>
-  )
+  );
 }

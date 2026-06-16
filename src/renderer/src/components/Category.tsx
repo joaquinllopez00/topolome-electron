@@ -1,27 +1,27 @@
-import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
-import { Pencil, Trash2, Check, X } from 'lucide-react'
-import type { Category as CategoryType } from '@/types'
-import { cn } from '@/lib/utils'
-import { Button } from './ui/button'
-import { Input } from './ui/input'
+import { useState } from "react";
+import { NavLink } from "react-router-dom";
+import { Pencil, Trash2, Check, X } from "lucide-react";
+import type { Category as CategoryType } from "@/types";
+import { cn } from "@/lib/utils";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 interface CategoryProps {
-  category: CategoryType
-  onRename: (from: string, to: string) => void
-  onDelete: (name: string) => void
+  category: CategoryType;
+  onRename: (from: string, to: string) => void;
+  onDelete: (name: string) => void;
 }
 
 /** A single category row in the sidebar nav, with hover rename/delete actions. */
 export function Category({ category, onRename, onDelete }: CategoryProps): React.JSX.Element {
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(category)
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(category);
 
   const commit = (): void => {
-    const next = value.trim()
-    if (next && next !== category) onRename(category, next)
-    setEditing(false)
-  }
+    const next = value.trim();
+    if (next && next !== category) onRename(category, next);
+    setEditing(false);
+  };
 
   if (editing) {
     return (
@@ -31,10 +31,10 @@ export function Category({ category, onRename, onDelete }: CategoryProps): React
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') commit()
-            if (e.key === 'Escape') {
-              setValue(category)
-              setEditing(false)
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") {
+              setValue(category);
+              setEditing(false);
             }
           }}
           className="h-6 pr-16 text-sm"
@@ -60,8 +60,8 @@ export function Category({ category, onRename, onDelete }: CategoryProps): React
               title="Cancel"
               className="rounded-none border-l border-border"
               onClick={() => {
-                setValue(category)
-                setEditing(false)
+                setValue(category);
+                setEditing(false);
               }}
             >
               <X />
@@ -70,7 +70,7 @@ export function Category({ category, onRename, onDelete }: CategoryProps): React
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -79,16 +79,16 @@ export function Category({ category, onRename, onDelete }: CategoryProps): React
         to={`/${encodeURIComponent(category)}`}
         className={({ isActive }) =>
           cn(
-            'flex w-full items-center gap-2 px-4 py-1.5 text-sm transition-colors',
+            "flex w-full items-center gap-2 px-4 py-1.5 text-sm transition-colors",
             isActive
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:text-foreground'
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:text-foreground",
           )
         }
       >
         {({ isActive }) => (
           <>
-            <span className="text-primary">{isActive ? '>' : '·'}</span>
+            <span className="text-primary">{isActive ? ">" : "·"}</span>
             <span className="truncate pr-16">{category}</span>
           </>
         )}
@@ -115,7 +115,7 @@ export function Category({ category, onRename, onDelete }: CategoryProps): React
             className="rounded-none border-l border-border hover:text-destructive"
             onClick={() => {
               if (confirm(`Delete category "${category}" and all its items?`)) {
-                onDelete(category)
+                onDelete(category);
               }
             }}
           >
@@ -125,5 +125,5 @@ export function Category({ category, onRename, onDelete }: CategoryProps): React
         </div>
       </div>
     </div>
-  )
+  );
 }

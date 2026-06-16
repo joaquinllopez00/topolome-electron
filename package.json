@@ -2,14 +2,16 @@
   "name": "topolome",
   "version": "0.0.1",
   "description": "Visualize the results of a local Claude agentic categorization loop",
-  "main": "./out/main/index.js",
   "author": "joaquin@happyrobot.ai",
   "type": "module",
+  "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "build:icon": "node scripts/build-icon.mjs",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
     "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false"
   },
   "dependencies": {
@@ -33,6 +35,7 @@
     "electron": "^35.1.4",
     "electron-vite": "^3.1.0",
     "lucide-react": "^0.487.0",
+    "oxfmt": "^0.55.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwind-merge": "^3.6.0",
