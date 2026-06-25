@@ -21,7 +21,14 @@ import {
   type Config,
   type CategoryMeta,
 } from "./store";
-import { startLoop, stopLoop, getLoopStatus, getLoopLogs, startActionSession } from "./loop";
+import {
+  startLoop,
+  stopLoop,
+  getLoopStatus,
+  getLoopLogs,
+  startActionSession,
+  sendToSession,
+} from "./loop";
 
 function resolveIconPath(): string | undefined {
   const candidates = [
@@ -123,6 +130,10 @@ app.whenReady().then(async () => {
     "session:start",
     (_e, opts: { category: string; itemId: string; dir: string; prompt: string }) =>
       startActionSession(opts),
+  );
+  ipcMain.handle(
+    "session:send",
+    (_e, opts: { category: string; itemId: string; message: string }) => sendToSession(opts),
   );
 
   ipcMain.handle("loop:start", () => startLoop());

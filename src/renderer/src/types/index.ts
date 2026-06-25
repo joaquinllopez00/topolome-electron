@@ -22,10 +22,17 @@ export interface SuggestedAction {
   sessionStartPrompt: string;
 }
 
-/** Progress note written back into the item file by an action session. */
+/** A timeline entry on an item: the user's prompt or the agent's progress note. */
 export interface ItemUpdate {
   at: string;
   text: string;
+  role?: "user" | "agent";
+}
+
+/** The Claude session started for an item, reused for all follow-ups. */
+export interface ActionSession {
+  id: string;
+  dir: string;
 }
 
 export interface Item {
@@ -35,6 +42,7 @@ export interface Item {
   sources?: Source[];
   suggestedAction?: SuggestedAction;
   updates?: ItemUpdate[];
+  actionSession?: ActionSession;
 }
 
 /** An item plus its filesystem id and timestamps, as returned by the store. */

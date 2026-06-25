@@ -77,10 +77,18 @@ export interface SuggestedAction {
   sessionStartPrompt: string;
 }
 
-/** Progress note written back by an action session, directly into the item file. */
+/** The Claude session started for this item, reused for all follow-ups. */
+export interface ActionSession {
+  id: string;
+  /** Working directory the session runs in (needed to resume). */
+  dir: string;
+}
+
+/** A timeline entry on an item: either the user's prompt or the agent's progress note. */
 export interface ItemUpdate {
   at: string;
   text: string;
+  role?: "user" | "agent";
 }
 
 export interface Item {
@@ -91,6 +99,7 @@ export interface Item {
   sources?: Source[];
   suggestedAction?: SuggestedAction;
   updates?: ItemUpdate[];
+  actionSession?: ActionSession;
 }
 
 /** An item as exposed to the renderer: file contents, id, and filesystem timestamps. */
@@ -274,9 +283,42 @@ function parseUpdates(raw: unknown): ItemUpdate[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const updates = raw
     .filter((u): u is Record<string, unknown> => !!u && typeof u === "object")
-    .map((u) => ({ at: String(u.at ?? ""), text: String(u.text ?? "") }))
+    .map((u) => ({
+      at: String(u.at ?? ""),
+      text: String(u.text ?? ""),
+      role: u.role === "user" ? ("user" as const) : ("agent" as const),
+    }))
     .filter((u) => u.text);
   return updates.length ? updates : undefined;
+}
+
+/**
+ * Append a timeline entry to an item, preserving everything else in the file.
+ * Used to record the user's own prompts/messages alongside the agent's notes.
+ */
+export async function appendItemUpdate(
+  category: string,
+  id: string,
+  update: { text: string; role: "user" | "agent" },
+): Promise<void> {
+  const path = itemFilePath(category, id);
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = JSON.parse(await fs.readFile(path, "utf-8"));
+  } catch {
+    return;
+  }
+  const updates = Array.isArray(parsed.updates) ? parsed.updates : [];
+  updates.push({ at: new Date().toISOString(), text: update.text, role: update.role });
+  parsed.updates = updates;
+  await fs.writeFile(path, JSON.stringify(parsed, null, 2), "utf-8");
+}
+
+function parseActionSession(raw: unknown): ActionSession | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.id !== "string" || !obj.id) return undefined;
+  return { id: obj.id, dir: typeof obj.dir === "string" ? obj.dir : "" };
 }
 
 /** Absolute path to an item's JSON file. */
@@ -304,6 +346,7 @@ export async function listItems(category: string): Promise<StoredItem[]> {
           sources: parseSources(parsed),
           suggestedAction: parseSuggestedAction(parsed.suggestedAction),
           updates: parseUpdates(parsed.updates),
+          actionSession: parseActionSession(parsed.actionSession),
           createdAt: stat.birthtimeMs || stat.mtimeMs,
           modifiedAt: stat.mtimeMs,
         } as StoredItem;
@@ -345,6 +388,7 @@ async function writeItem(dir: string, id: string, item: Item): Promise<void> {
     ...(item.sources?.length ? { sources: item.sources } : {}),
     ...(item.suggestedAction ? { suggestedAction: item.suggestedAction } : {}),
     ...(item.updates?.length ? { updates: item.updates } : {}),
+    ...(item.actionSession ? { actionSession: item.actionSession } : {}),
   };
   await fs.writeFile(join(dir, `${id}.json`), JSON.stringify(payload, null, 2), "utf-8");
 }

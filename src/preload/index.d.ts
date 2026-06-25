@@ -14,6 +14,11 @@ declare global {
         dir: string;
         prompt: string;
       }) => Promise<{ sessionId: string }>;
+      sendToSession: (opts: {
+        category: string;
+        itemId: string;
+        message: string;
+      }) => Promise<{ sessionId: string }>;
       onStoreChanged: (cb: () => void) => () => void;
       listCategories: () => Promise<string[]>;
       createCategory: (name: string) => Promise<string>;

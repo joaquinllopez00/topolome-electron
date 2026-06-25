@@ -4,7 +4,10 @@ import {
   DATA_ROOT,
   getConfig,
   listCategories,
+  listItems,
   getCategoryMeta,
+  updateItem,
+  appendItemUpdate,
   itemFilePath,
   type Config,
   type CategoryMeta,
@@ -359,33 +362,27 @@ export async function startLoop(): Promise<LoopStatus> {
   return status;
 }
 
-/**
- * Launch a Claude session for an item's suggested action, in the user-chosen
- * directory. The session is seeded with the action prompt plus instructions to
- * write progress back into the item file. Resolves with the session id (read
- * from the first stream-json event) so the UI can show a `claude --resume`
- * command; the process then keeps running in the background.
- */
-export async function startActionSession(opts: {
-  category: string;
-  itemId: string;
-  dir: string;
-  prompt: string;
-}): Promise<{ sessionId: string }> {
-  const env = await resolveEnv();
-  const itemPath = itemFilePath(opts.category, opts.itemId);
-  const prompt = `${opts.prompt}
+/** Reminder appended to every session turn so the agent keeps writing back. */
+function writebackFooter(itemPath: string): string {
+  return `
 
 ---
-Report progress into the topolome item file at:
+Record progress into the topolome item file at:
   ${itemPath}
 Append entries to its "updates" array as { "at": "<ISO 8601 timestamp>", "text": "<what you did or found>" }, preserving everything else in the file. You may also revise or clear its "suggestedAction" ({ "title", "sessionStartPrompt" }) as the work progresses.`;
+}
 
+/**
+ * Spawn a headless `claude` turn and resolve with its session id (from the first
+ * stream-json event); the process then keeps running in the background. Rejects
+ * if it dies before emitting a session id.
+ */
+function spawnSession(args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<string> {
   return new Promise((resolve, reject) => {
     const proc = spawn(
       "claude",
-      ["-p", prompt, "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose"],
-      { cwd: opts.dir, env, stdio: ["ignore", "pipe", "pipe"] },
+      [...args, "--permission-mode", "bypassPermissions", "--output-format", "stream-json", "--verbose"],
+      { cwd, env, stdio: ["ignore", "pipe", "pipe"] },
     );
     let buffer = "";
     let settled = false;
@@ -399,7 +396,7 @@ Append entries to its "updates" array as { "at": "<ISO 8601 timestamp>", "text":
           const ev = JSON.parse(line);
           if (typeof ev.session_id === "string") {
             settled = true;
-            resolve({ sessionId: ev.session_id });
+            resolve(ev.session_id);
             return;
           }
         } catch {
@@ -420,6 +417,51 @@ Append entries to its "updates" array as { "at": "<ISO 8601 timestamp>", "text":
       }
     });
   });
+}
+
+/**
+ * Start a Claude session for an item's suggested action in the chosen dir, seeded
+ * with the prompt + writeback instructions. Persists the session id on the item
+ * so every follow-up reuses it.
+ */
+export async function startActionSession(opts: {
+  category: string;
+  itemId: string;
+  dir: string;
+  prompt: string;
+}): Promise<{ sessionId: string }> {
+  const env = await resolveEnv();
+  const itemPath = itemFilePath(opts.category, opts.itemId);
+  await appendItemUpdate(opts.category, opts.itemId, { text: opts.prompt, role: "user" });
+  const sessionId = await spawnSession(
+    ["-p", opts.prompt + writebackFooter(itemPath)],
+    opts.dir,
+    env,
+  );
+  await updateItem(opts.category, opts.itemId, {
+    actionSession: { id: sessionId, dir: opts.dir },
+  });
+  return { sessionId };
+}
+
+/** Send a follow-up message into an item's existing session (claude --resume). */
+export async function sendToSession(opts: {
+  category: string;
+  itemId: string;
+  message: string;
+}): Promise<{ sessionId: string }> {
+  const item = (await listItems(opts.category)).find((i) => i.id === opts.itemId);
+  const session = item?.actionSession;
+  if (!session?.id) throw new Error("No session to resume for this item");
+  const env = await resolveEnv();
+  const itemPath = itemFilePath(opts.category, opts.itemId);
+  await appendItemUpdate(opts.category, opts.itemId, { text: opts.message, role: "user" });
+  const sessionId = await spawnSession(
+    ["--resume", session.id, "-p", opts.message + writebackFooter(itemPath)],
+    session.dir,
+    env,
+  );
+  return { sessionId };
 }
 
 /** Stop scheduling. The in-flight job finishes; no further jobs are launched. */

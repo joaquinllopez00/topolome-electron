@@ -27,6 +27,8 @@ const api = {
   pickDirectory: () => ipcRenderer.invoke("dialog:pickDirectory"),
   startSession: (opts: { category: string; itemId: string; dir: string; prompt: string }) =>
     ipcRenderer.invoke("session:start", opts),
+  sendToSession: (opts: { category: string; itemId: string; message: string }) =>
+    ipcRenderer.invoke("session:send", opts),
   /** Subscribe to filesystem changes in the categories tree. Returns unsubscribe. */
   onStoreChanged: (cb: () => void) => {
     const listener = (): void => cb();

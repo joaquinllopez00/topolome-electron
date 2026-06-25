@@ -5,6 +5,7 @@ import type { ItemView, StoredItem } from "@/types";
 import { cn } from "@/lib/utils";
 import { CategoryItemList } from "../components/CategoryItemList";
 import { CategorySettingsDialog } from "../components/CategorySettingsDialog";
+import { Shell, ShellActions, ShellHeader, ShellTitle } from "../components/Shell";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -106,10 +107,10 @@ export default function CategoryRoute(): React.JSX.Element {
     });
 
   return (
-    <div className="px-8 py-12">
-      <div className="mb-8 flex items-baseline justify-between border-b border-border pb-4">
-        <h1 className="text-2xl font-semibold tracking-tight">{category}</h1>
-        <div className="flex items-center gap-3">
+    <Shell>
+      <ShellHeader>
+        <ShellTitle>{category}</ShellTitle>
+        <ShellActions>
           {archivedCount > 0 && (
             <button
               onClick={() => setShowArchived((v) => !v)}
@@ -158,8 +159,8 @@ export default function CategoryRoute(): React.JSX.Element {
           <Button size="sm" onClick={() => setAdding((v) => !v)}>
             + item
           </Button>
-        </div>
-      </div>
+        </ShellActions>
+      </ShellHeader>
 
       <div className="mb-6 flex items-center gap-2">
         <Input
@@ -227,6 +228,6 @@ export default function CategoryRoute(): React.JSX.Element {
           onSave={handleSave}
         />
       )}
-    </div>
+    </Shell>
   );
 }

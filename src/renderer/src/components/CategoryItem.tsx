@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Archive,
   ArchiveRestore,
@@ -8,6 +9,7 @@ import {
   X,
   ExternalLink,
   Sparkles,
+  MessagesSquare,
 } from "lucide-react";
 import type { StoredItem } from "@/types";
 import { cn } from "@/lib/utils";
@@ -17,7 +19,6 @@ import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import { ItemActionDialog } from "./ItemActionDialog";
 
 function formatModifiedAt(ts: number): string {
   const d = new Date(ts);
@@ -45,10 +46,12 @@ export function CategoryItem({
   onDelete,
   onSave,
 }: CategoryItemProps): React.JSX.Element {
+  const navigate = useNavigate();
+  const href = `/${encodeURIComponent(category)}/${encodeURIComponent(item.id)}`;
+  const open = (): void => navigate(href);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description);
-  const [actionOpen, setActionOpen] = useState(false);
 
   const save = (): void => {
     if (!title.trim()) return;
@@ -123,7 +126,11 @@ export function CategoryItem({
 
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 space-y-1">
-          <h3 className="font-semibold text-foreground">{item.title}</h3>
+          <h3 className="font-semibold text-foreground">
+            <button type="button" onClick={open} className="text-left hover:underline">
+              {item.title}
+            </button>
+          </h3>
           {item.description && (
             <p className="text-sm leading-relaxed text-muted-foreground">{item.description}</p>
           )}
@@ -139,7 +146,7 @@ export function CategoryItem({
         {item.suggestedAction && (
           <Button
             variant="secondary"
-            onClick={() => setActionOpen(true)}
+            onClick={open}
             className={cn(
               "relative h-auto w-fit max-w-full items-start justify-start gap-1.5 border-border bg-secondary/40 px-2.5 py-1.5 text-left text-xs tracking-normal whitespace-normal normal-case hover:border-primary/50 hover:bg-secondary",
               updateCount > 0 && "pr-7",
@@ -164,6 +171,20 @@ export function CategoryItem({
                 </TooltipContent>
               </Tooltip>
             )}
+          </Button>
+        )}
+
+        {/* No suggested action but the agent left progress — still let it be opened. */}
+        {!item.suggestedAction && updateCount > 0 && (
+          <Button
+            variant="secondary"
+            onClick={open}
+            className="h-auto w-fit max-w-full items-center justify-start gap-1.5 border-border bg-secondary/40 px-2.5 py-1.5 text-xs tracking-normal normal-case hover:border-primary/50 hover:bg-secondary"
+          >
+            <MessagesSquare className="size-3 shrink-0 text-primary" />
+            <span className="font-normal text-foreground">
+              {updateCount} update{updateCount === 1 ? "" : "s"}
+            </span>
           </Button>
         )}
 
@@ -199,13 +220,6 @@ export function CategoryItem({
           </time>
         </div>
       </div>
-
-      <ItemActionDialog
-        item={item}
-        category={category}
-        open={actionOpen}
-        onOpenChange={setActionOpen}
-      />
     </Card>
   );
 }

@@ -4,6 +4,7 @@ import { createHashRouter, RouterProvider } from "react-router-dom";
 import App from "./App";
 import HomeRoute from "./routes/Home";
 import CategoryRoute from "./routes/CategoryRoute";
+import ItemRoute from "./routes/ItemRoute";
 import { applyTheme, storedTheme } from "./lib/theme";
 import "./index.css";
 
@@ -18,6 +19,7 @@ const router = createHashRouter([
     children: [
       { index: true, element: <HomeRoute /> },
       { path: ":category", element: <CategoryRoute /> },
+      { path: ":category/:itemId", element: <ItemRoute /> },
     ],
   },
 ]);
